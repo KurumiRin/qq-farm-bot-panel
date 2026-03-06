@@ -5,6 +5,7 @@ mod code_receiver;
 mod commands;
 mod config;
 mod error;
+mod item_names;
 mod network;
 mod proto;
 mod services;
@@ -61,6 +62,7 @@ pub fn run() {
             commands::auto_plant_empty,
             commands::plant_seeds,
             commands::get_friends,
+            commands::visit_and_act_friend,
             commands::get_bag,
             commands::sell_all_fruits,
             commands::get_tasks,

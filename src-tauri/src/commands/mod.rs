@@ -567,9 +567,27 @@ pub async fn plant_seeds(
 
 // ========== Friend Commands ==========
 
-/// Get friends list
+#[derive(Serialize)]
+pub struct FriendView {
+    pub gid: i64,
+    pub name: String,
+    pub level: i64,
+    pub avatar_url: String,
+    pub steal_count: i64,
+    pub dry_count: i64,
+    pub weed_count: i64,
+    pub insect_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct FriendsView {
+    pub friends: Vec<FriendView>,
+    pub application_count: i64,
+}
+
+/// Get friends list (processed for UI)
 #[tauri::command]
-pub async fn get_friends(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
+pub async fn get_friends(state: State<'_, TauriState>) -> Result<FriendsView, String> {
     let engine = get_engine(&state).await?;
 
     let reply = engine
@@ -578,14 +596,137 @@ pub async fn get_friends(state: State<'_, TauriState>) -> Result<serde_json::Val
         .await
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(&reply).map_err(|e| e.to_string())
+    let friends = reply
+        .game_friends
+        .iter()
+        .map(|f| {
+            let plant = f.plant.as_ref();
+            FriendView {
+                gid: f.gid,
+                name: if f.remark.is_empty() { f.name.clone() } else { f.remark.clone() },
+                level: f.level,
+                avatar_url: f.avatar_url.clone(),
+                steal_count: plant.map(|p| p.steal_plant_num).unwrap_or(0),
+                dry_count: plant.map(|p| p.dry_num).unwrap_or(0),
+                weed_count: plant.map(|p| p.weed_num).unwrap_or(0),
+                insect_count: plant.map(|p| p.insect_num).unwrap_or(0),
+            }
+        })
+        .collect();
+
+    Ok(FriendsView {
+        friends,
+        application_count: reply.application_count,
+    })
+}
+
+/// Visit a friend's farm and perform all available actions
+#[tauri::command]
+pub async fn visit_and_act_friend(
+    gid: i64,
+    state: State<'_, TauriState>,
+) -> Result<String, String> {
+    let engine = get_engine(&state).await?;
+    let my_gid = state.app_state.user.read().gid;
+
+    let visit = engine.friend().visit_farm(gid).await.map_err(|e| e.to_string())?;
+
+    let mut steal_ids = Vec::new();
+    let mut dry_ids = Vec::new();
+    let mut weed_ids = Vec::new();
+    let mut insect_ids = Vec::new();
+
+    let now = chrono::Utc::now().timestamp();
+    for land in &visit.lands {
+        if !land.unlocked { continue; }
+        if let Some(p) = &land.plant {
+            let phase = p.phases.iter().rev()
+                .find(|ph| ph.begin_time > 0 && ph.begin_time <= now)
+                .or_else(|| p.phases.first())
+                .map(|ph| crate::config::PlantPhase::from_i32(ph.phase))
+                .unwrap_or(crate::config::PlantPhase::Unknown);
+
+            if phase == crate::config::PlantPhase::Mature && p.stealable && !p.stealers.contains(&my_gid) {
+                steal_ids.push(land.id);
+            }
+            if p.dry_num > 0 { dry_ids.push(land.id); }
+            if !p.weed_owners.is_empty() { weed_ids.push(land.id); }
+            if !p.insect_owners.is_empty() { insect_ids.push(land.id); }
+        }
+    }
+
+    let mut actions = Vec::new();
+
+    if !steal_ids.is_empty() {
+        match engine.friend().steal(gid, steal_ids.clone()).await {
+            Ok(_) => actions.push(format!("偷菜 {}块", steal_ids.len())),
+            Err(e) => log::warn!("Steal failed: {}", e),
+        }
+    }
+    if !dry_ids.is_empty() {
+        match engine.friend().help_water(gid, dry_ids.clone()).await {
+            Ok(_) => actions.push(format!("浇水 {}块", dry_ids.len())),
+            Err(e) => log::warn!("Water failed: {}", e),
+        }
+    }
+    if !weed_ids.is_empty() {
+        match engine.friend().help_weed_out(gid, weed_ids.clone()).await {
+            Ok(_) => actions.push(format!("除草 {}块", weed_ids.len())),
+            Err(e) => log::warn!("Weed failed: {}", e),
+        }
+    }
+    if !insect_ids.is_empty() {
+        match engine.friend().help_insecticide(gid, insect_ids.clone()).await {
+            Ok(_) => actions.push(format!("除虫 {}块", insect_ids.len())),
+            Err(e) => log::warn!("Insecticide failed: {}", e),
+        }
+    }
+
+    let _ = engine.friend().leave_farm(gid).await;
+
+    if actions.is_empty() {
+        Ok("无可执行操作".into())
+    } else {
+        Ok(actions.join("，"))
+    }
 }
 
 // ========== Warehouse Commands ==========
 
-/// Get backpack contents
+#[derive(Serialize)]
+pub struct BagItemView {
+    pub id: i64,
+    pub count: i64,
+    pub name: String,
+    pub category: String, // "seed" | "fruit" | "fertilizer" | "currency" | "other"
+}
+
+#[derive(Serialize)]
+pub struct BagView {
+    pub items: Vec<BagItemView>,
+    pub seed_count: usize,
+    pub fruit_count: usize,
+    pub fertilizer_count: usize,
+    pub other_count: usize,
+}
+
+fn categorize_item(id: i64) -> (&'static str, &'static str) {
+    match id {
+        1 | 1001 => ("currency", "金币"),
+        1004 => ("currency", "钻石"),
+        1101 => ("currency", "经验"),
+        1011 => ("currency", "普通化肥容器"),
+        1012 => ("currency", "有机化肥容器"),
+        20000..=29999 => ("seed", "种子"),
+        40000..=49999 => ("fruit", "果实"),
+        80001..=80099 => ("fertilizer", "化肥"),
+        _ => ("other", "其他"),
+    }
+}
+
+/// Get backpack contents (processed for UI)
 #[tauri::command]
-pub async fn get_bag(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
+pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
     let engine = get_engine(&state).await?;
 
     let reply = engine
@@ -594,19 +735,57 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<serde_json::Value, 
         .await
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(&reply).map_err(|e| e.to_string())
+    let raw_items = reply.item_bag.map(|b| b.items).unwrap_or_default();
+
+    let mut items: Vec<BagItemView> = raw_items
+        .iter()
+        .filter(|item| item.count > 0)
+        .map(|item| {
+            let (cat, _default_name) = categorize_item(item.id);
+            BagItemView {
+                id: item.id,
+                count: item.count,
+                name: crate::item_names::get_item_name(item.id)
+                    .unwrap_or(_default_name)
+                    .to_string(),
+                category: cat.into(),
+            }
+        })
+        .collect();
+
+    // Sort: fruits first, then seeds, then others
+    items.sort_by(|a, b| {
+        let order = |c: &str| match c { "fruit" => 0, "seed" => 1, "fertilizer" => 2, "currency" => 3, _ => 4 };
+        order(&a.category).cmp(&order(&b.category)).then(b.count.cmp(&a.count))
+    });
+
+    let seed_count = items.iter().filter(|i| i.category == "seed").count();
+    let fruit_count = items.iter().filter(|i| i.category == "fruit").count();
+    let fertilizer_count = items.iter().filter(|i| i.category == "fertilizer").count();
+    let other_count = items.iter().filter(|i| i.category == "other" || i.category == "currency").count();
+
+    Ok(BagView { items, seed_count, fruit_count, fertilizer_count, other_count })
 }
 
 /// Manually sell all fruits
 #[tauri::command]
-pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<(), String> {
+pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<String, String> {
     let engine = get_engine(&state).await?;
+
+    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
+    let raw_items = bag.item_bag.map(|b| b.items).unwrap_or_default();
+    let fruit_count: i64 = raw_items.iter()
+        .filter(|i| i.id >= 40000 && i.id < 50000 && i.count > 0)
+        .map(|i| i.count)
+        .sum();
 
     engine
         .warehouse()
         .auto_sell_fruits()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    Ok(format!("已出售 {} 个果实", fruit_count))
 }
 
 // ========== Task Commands ==========

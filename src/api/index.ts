@@ -61,10 +61,13 @@ export const plantSeeds = (seedId: number, landIds: number[]) =>
 // Friends
 export const getFriends = () => invoke<unknown>("get_friends");
 
+export const visitAndActFriend = (gid: number) =>
+  invoke<string>("visit_and_act_friend", { gid });
+
 // Warehouse
 export const getBag = () => invoke<unknown>("get_bag");
 
-export const sellAllFruits = () => invoke<void>("sell_all_fruits");
+export const sellAllFruits = () => invoke<string>("sell_all_fruits");
 
 // Tasks
 export const getTasks = () => invoke<unknown>("get_tasks");
