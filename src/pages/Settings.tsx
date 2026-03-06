@@ -110,122 +110,120 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Settings</h1>
+          <h1 className="text-xl font-bold">设置</h1>
           <p className="text-sm text-on-surface-muted">
-            Configure automation behavior
+            配置自动化行为
           </p>
         </div>
         <Button
           size="sm"
-          icon={
-            saved ? undefined : <Save className="size-3.5" />
-          }
+          icon={saved ? undefined : <Save className="size-3.5" />}
           onClick={handleSave}
           loading={saving}
         >
-          {saved ? "Saved!" : "Save"}
+          {saved ? "已保存" : "保存"}
         </Button>
       </div>
 
-      <Card title="Farm Automation">
+      <Card title="农场自动化">
         <div className="divide-y divide-border">
           <ToggleRow
-            label="Auto Harvest"
-            description="Automatically harvest mature crops"
+            label="自动收获"
+            description="自动收获成熟作物"
             checked={config.auto_harvest}
             onChange={() => toggle("auto_harvest")}
           />
           <ToggleRow
-            label="Auto Plant"
-            description="Re-plant after harvest"
+            label="自动播种"
+            description="收获后自动重新播种"
             checked={config.auto_plant}
             onChange={() => toggle("auto_plant")}
           />
           <ToggleRow
-            label="Auto Water"
-            description="Water dry crops automatically"
+            label="自动浇水"
+            description="自动给缺水作物浇水"
             checked={config.auto_water}
             onChange={() => toggle("auto_water")}
           />
           <ToggleRow
-            label="Auto Weed"
-            description="Remove weeds automatically"
+            label="自动除草"
+            description="自动清除杂草"
             checked={config.auto_weed}
             onChange={() => toggle("auto_weed")}
           />
           <ToggleRow
-            label="Auto Insecticide"
-            description="Remove insects automatically"
+            label="自动除虫"
+            description="自动清除害虫"
             checked={config.auto_insecticide}
             onChange={() => toggle("auto_insecticide")}
           />
           <ToggleRow
-            label="Auto Fertilize"
-            description="Use fertilizer on crops"
+            label="自动施肥"
+            description="自动使用化肥"
             checked={config.auto_fertilize}
             onChange={() => toggle("auto_fertilize")}
           />
         </div>
       </Card>
 
-      <Card title="Sell & Collect">
+      <Card title="出售与领取">
         <div className="divide-y divide-border">
           <ToggleRow
-            label="Auto Sell"
-            description="Sell fruits automatically"
+            label="自动出售"
+            description="自动出售果实"
             checked={config.auto_sell}
             onChange={() => toggle("auto_sell")}
           />
           <ToggleRow
-            label="Auto Claim Tasks"
-            description="Claim task rewards"
+            label="自动领取任务"
+            description="自动领取任务奖励"
             checked={config.auto_claim_tasks}
             onChange={() => toggle("auto_claim_tasks")}
           />
           <ToggleRow
-            label="Auto Claim Emails"
-            description="Claim email rewards"
+            label="自动领取邮件"
+            description="自动领取邮件奖励"
             checked={config.auto_claim_emails}
             onChange={() => toggle("auto_claim_emails")}
           />
         </div>
       </Card>
 
-      <Card title="Social">
+      <Card title="社交">
         <div className="divide-y divide-border">
           <ToggleRow
-            label="Auto Steal"
-            description="Steal from friends' farms"
+            label="自动偷菜"
+            description="自动偷取好友农场的作物"
             checked={config.auto_steal}
             onChange={() => toggle("auto_steal")}
           />
           <ToggleRow
-            label="Auto Help Water"
-            description="Water friends' crops"
+            label="自动帮浇水"
+            description="帮好友的作物浇水"
             checked={config.auto_help_water}
             onChange={() => toggle("auto_help_water")}
           />
           <ToggleRow
-            label="Auto Help Weed"
-            description="Remove weeds from friends"
+            label="自动帮除草"
+            description="帮好友清除杂草"
             checked={config.auto_help_weed}
             onChange={() => toggle("auto_help_weed")}
           />
           <ToggleRow
-            label="Auto Help Insecticide"
-            description="Remove insects from friends"
+            label="自动帮除虫"
+            description="帮好友清除害虫"
             checked={config.auto_help_insecticide}
             onChange={() => toggle("auto_help_insecticide")}
           />
         </div>
       </Card>
 
-      <Card title="Preferences">
+      <Card title="偏好设置">
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium">Preferred Seed ID</label>
+            <label className="text-sm font-medium">首选种子 ID</label>
             <p className="text-xs text-on-surface-muted mb-1.5">
-              Seed to auto-plant (leave empty for default)
+              自动播种时使用的种子（留空则使用默认）
             </p>
             <input
               type="number"
@@ -238,7 +236,7 @@ export default function SettingsPage() {
                 }));
                 setSaved(false);
               }}
-              placeholder="e.g. 10001"
+              placeholder="例如 10001"
               className="w-full rounded-lg border border-border bg-surface-dim px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
             />
           </div>

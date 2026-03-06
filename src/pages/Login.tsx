@@ -33,34 +33,33 @@ export default function LoginPage() {
     try {
       const res = await api.requestQrCode("vip");
       setQrImage(`data:image/png;base64,${res.qrcode}`);
-      setStatusMsg("Please scan the QR code with QQ");
+      setStatusMsg("请使用 QQ 扫描二维码");
 
       pollRef.current = setInterval(async () => {
         try {
           const status = await api.checkQrStatus(res.qrsig, "vip");
           if (status.ret === "0") {
             stopPolling();
-            setStatusMsg(`Welcome, ${status.nickname}! Getting auth code...`);
-            // Get mini program code for server connection
+            setStatusMsg(`欢迎, ${status.nickname}! 正在获取授权码...`);
             const mpRes = await api.requestMpLoginCode();
             setConnecting(true);
-            setStatusMsg("Connecting to game server...");
+            setStatusMsg("正在连接游戏服务器...");
             await api.connectAndLogin(mpRes.code);
             navigate("/");
           } else if (status.ret === "65") {
-            setStatusMsg("QR code expired, please refresh");
+            setStatusMsg("二维码已过期，请刷新");
             stopPolling();
           } else if (status.ret === "67") {
-            setStatusMsg("Confirming on phone...");
+            setStatusMsg("请在手机上确认...");
           } else if (status.ret === "66") {
-            setStatusMsg("Waiting for scan...");
+            setStatusMsg("等待扫码...");
           }
         } catch {
           // keep polling
         }
       }, 2000);
     } catch (e) {
-      setStatusMsg(`Failed: ${e}`);
+      setStatusMsg(`失败: ${e}`);
     } finally {
       setLoading(false);
     }
@@ -74,9 +73,9 @@ export default function LoginPage() {
       const res = await api.requestMpLoginCode();
       setMpCode(res.code);
       setQrImage(`data:image/png;base64,${res.qrcode}`);
-      setStatusMsg("Scan with WeChat to authorize");
+      setStatusMsg("请使用微信扫码授权");
     } catch (e) {
-      setStatusMsg(`Failed: ${e}`);
+      setStatusMsg(`失败: ${e}`);
     } finally {
       setLoading(false);
     }
@@ -85,12 +84,12 @@ export default function LoginPage() {
   const connectWithCode = useCallback(
     async (code: string) => {
       setConnecting(true);
-      setStatusMsg("Connecting to game server...");
+      setStatusMsg("正在连接游戏服务器...");
       try {
         await api.connectAndLogin(code);
         navigate("/");
       } catch (e) {
-        setStatusMsg(`Connection failed: ${e}`);
+        setStatusMsg(`连接失败: ${e}`);
         setConnecting(false);
       }
     },
@@ -108,21 +107,19 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-dim p-4">
       <div className="w-full max-w-sm space-y-6">
-        {/* Logo */}
         <div className="text-center">
           <Sprout className="mx-auto size-12 text-primary-500" />
           <h1 className="mt-3 text-2xl font-bold">Farm Pilot</h1>
           <p className="mt-1 text-sm text-on-surface-muted">
-            Sign in to start farming
+            登录以开始自动化农场
           </p>
         </div>
 
-        {/* Method tabs */}
         <div className="flex rounded-lg bg-surface-bright p-1">
           {(
             [
-              { key: "qr", icon: QrCode, label: "QQ Scan" },
-              { key: "mp", icon: Smartphone, label: "WeChat" },
+              { key: "qr", icon: QrCode, label: "QQ 扫码" },
+              { key: "mp", icon: Smartphone, label: "微信小程序" },
             ] as const
           ).map(({ key, icon: Icon, label }) => (
             <button
@@ -141,14 +138,13 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* QR Code area */}
         <div className="rounded-card border border-border bg-surface p-6">
           {qrImage ? (
             <div className="flex flex-col items-center gap-4">
               <div className="rounded-xl border border-border bg-white p-3">
                 <img
                   src={qrImage}
-                  alt="QR Code"
+                  alt="二维码"
                   className="size-48 object-contain"
                 />
               </div>
@@ -159,7 +155,7 @@ export default function LoginPage() {
                 onClick={method === "qr" ? requestQr : requestMp}
                 loading={loading}
               >
-                Refresh
+                刷新
               </Button>
             </div>
           ) : (
@@ -175,16 +171,15 @@ export default function LoginPage() {
                 onClick={method === "qr" ? requestQr : requestMp}
                 loading={loading}
               >
-                {method === "qr" ? "Get QR Code" : "Get Auth Code"}
+                {method === "qr" ? "获取二维码" : "获取授权码"}
               </Button>
             </div>
           )}
 
-          {/* Manual code input for MP method */}
           {method === "mp" && mpCode && (
             <div className="mt-4 space-y-3">
               <div className="rounded-lg bg-surface-bright px-3 py-2">
-                <p className="text-xs text-on-surface-muted mb-1">Auth Code</p>
+                <p className="text-xs text-on-surface-muted mb-1">授权码</p>
                 <p className="font-mono text-sm select-all break-all">
                   {mpCode}
                 </p>
@@ -194,13 +189,12 @@ export default function LoginPage() {
                 onClick={() => connectWithCode(mpCode)}
                 loading={connecting}
               >
-                Connect
+                连接
               </Button>
             </div>
           )}
         </div>
 
-        {/* Status message */}
         {statusMsg && (
           <p className="text-center text-sm text-on-surface-muted">
             {statusMsg}

@@ -56,9 +56,9 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Tasks</h1>
+          <h1 className="text-xl font-bold">任务</h1>
           <p className="text-sm text-on-surface-muted">
-            {tasks.length} tasks | {claimableCount} claimable
+            共 {tasks.length} 个任务 | {claimableCount} 个可领取
           </p>
         </div>
         <div className="flex gap-2">
@@ -69,7 +69,7 @@ export default function TasksPage() {
             onClick={fetchTasks}
             loading={loading}
           >
-            Refresh
+            刷新
           </Button>
           {claimableCount > 0 && (
             <Button
@@ -78,7 +78,7 @@ export default function TasksPage() {
               onClick={handleClaimAll}
               loading={claiming}
             >
-              Claim All
+              全部领取
             </Button>
           )}
         </div>
@@ -87,8 +87,8 @@ export default function TasksPage() {
       {tasks.length === 0 && !loading ? (
         <EmptyState
           icon={<ListTodo className="size-10" />}
-          title="No tasks"
-          description="Connect to the game server to view your tasks"
+          title="暂无任务"
+          description="请先连接游戏服务器"
         />
       ) : (
         <div className="space-y-3">
@@ -111,7 +111,7 @@ export default function TasksPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
-                      {task.name ?? `Task #${task.task_id}`}
+                      {task.name ?? `任务 #${task.task_id}`}
                     </p>
                     {task.desc && (
                       <p className="text-xs text-on-surface-muted truncate">
@@ -121,9 +121,7 @@ export default function TasksPage() {
                     {task.progress != null && task.target != null && (
                       <div className="mt-2">
                         <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-on-surface-muted">
-                            Progress
-                          </span>
+                          <span className="text-on-surface-muted">进度</span>
                           <span className="font-medium">
                             {task.progress}/{task.target}
                           </span>
@@ -145,15 +143,15 @@ export default function TasksPage() {
                   <div className="shrink-0">
                     {done ? (
                       <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                        Done
+                        已完成
                       </span>
                     ) : claimable ? (
                       <span className="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700">
-                        Claimable
+                        可领取
                       </span>
                     ) : (
                       <span className="rounded-full bg-surface-bright px-2.5 py-1 text-xs font-medium text-on-surface-muted">
-                        In Progress
+                        进行中
                       </span>
                     )}
                   </div>

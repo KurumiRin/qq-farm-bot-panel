@@ -38,9 +38,9 @@ export default function FriendsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Friends</h1>
+          <h1 className="text-xl font-bold">好友</h1>
           <p className="text-sm text-on-surface-muted">
-            {friends.length} friends
+            共 {friends.length} 位好友
           </p>
         </div>
         <Button
@@ -50,15 +50,15 @@ export default function FriendsPage() {
           onClick={fetchFriends}
           loading={loading}
         >
-          Refresh
+          刷新
         </Button>
       </div>
 
       {friends.length === 0 && !loading ? (
         <EmptyState
           icon={<Users className="size-10" />}
-          title="No friends loaded"
-          description="Connect to the game server to view your friends"
+          title="暂无好友数据"
+          description="请先连接游戏服务器"
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -78,7 +78,7 @@ export default function FriendsPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {friend.name ?? `Friend #${friend.gid}`}
+                    {friend.name ?? `好友 #${friend.gid}`}
                   </p>
                   {friend.level != null && (
                     <p className="text-xs text-on-surface-muted">

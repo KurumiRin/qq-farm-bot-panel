@@ -49,9 +49,9 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Inventory</h1>
+          <h1 className="text-xl font-bold">仓库</h1>
           <p className="text-sm text-on-surface-muted">
-            {items.length} items in bag
+            共 {items.length} 件物品
           </p>
         </div>
         <div className="flex gap-2">
@@ -62,7 +62,7 @@ export default function InventoryPage() {
             onClick={fetchBag}
             loading={loading}
           >
-            Refresh
+            刷新
           </Button>
           <Button
             variant="danger"
@@ -71,7 +71,7 @@ export default function InventoryPage() {
             onClick={handleSellAll}
             loading={selling}
           >
-            Sell Fruits
+            卖出果实
           </Button>
         </div>
       </div>
@@ -79,8 +79,8 @@ export default function InventoryPage() {
       {items.length === 0 && !loading ? (
         <EmptyState
           icon={<Package className="size-10" />}
-          title="Bag is empty"
-          description="Connect to the game server to view your inventory"
+          title="背包为空"
+          description="请先连接游戏服务器"
         />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -88,7 +88,7 @@ export default function InventoryPage() {
             <Card key={item.item_id ?? idx}>
               <div className="space-y-1">
                 <p className="text-sm font-medium truncate">
-                  {item.name ?? `Item #${item.item_id}`}
+                  {item.name ?? `物品 #${item.item_id}`}
                 </p>
                 {item.type_name && (
                   <p className="text-xs text-on-surface-muted">

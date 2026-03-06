@@ -18,14 +18,14 @@ interface LandInfo {
 }
 
 const phaseLabels: Record<number, string> = {
-  0: "Empty",
-  1: "Seed",
-  2: "Sprout",
-  3: "Small",
-  4: "Large",
-  5: "Bloom",
-  6: "Mature",
-  7: "Dead",
+  0: "空地",
+  1: "种子",
+  2: "发芽",
+  3: "小叶",
+  4: "大叶",
+  5: "开花",
+  6: "成熟",
+  7: "枯死",
 };
 
 const phaseColors: Record<number, string> = {
@@ -84,9 +84,9 @@ export default function FarmPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">My Farm</h1>
+          <h1 className="text-xl font-bold">我的农场</h1>
           <p className="text-sm text-on-surface-muted">
-            {lands.length} lands | {matureCount} ready to harvest
+            {lands.length} 块土地 | {matureCount} 块可收获
           </p>
         </div>
         <div className="flex gap-2">
@@ -97,7 +97,7 @@ export default function FarmPage() {
             onClick={fetchLands}
             loading={loading}
           >
-            Refresh
+            刷新
           </Button>
           {matureCount > 0 && (
             <Button
@@ -106,7 +106,7 @@ export default function FarmPage() {
               onClick={handleHarvestAll}
               loading={harvesting}
             >
-              Harvest All ({matureCount})
+              全部收获 ({matureCount})
             </Button>
           )}
         </div>
@@ -115,8 +115,8 @@ export default function FarmPage() {
       {lands.length === 0 && !loading ? (
         <EmptyState
           icon={<Sprout className="size-10" />}
-          title="No land data"
-          description="Connect to the game server to view your farm"
+          title="暂无土地数据"
+          description="请先连接游戏服务器"
         />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -127,14 +127,14 @@ export default function FarmPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-on-surface-muted">
-                      Land #{land.land_id ?? idx + 1}
+                      土地 #{land.land_id ?? idx + 1}
                     </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         phaseColors[phase] ?? phaseColors[0]
                       }`}
                     >
-                      {phaseLabels[phase] ?? "Unknown"}
+                      {phaseLabels[phase] ?? "未知"}
                     </span>
                   </div>
 
@@ -146,25 +146,24 @@ export default function FarmPage() {
 
                   {phase === 6 && land.harvest_count != null && (
                     <p className="text-xs text-primary-600">
-                      Yield: {land.harvest_count}
+                      产量: {land.harvest_count}
                     </p>
                   )}
 
-                  {/* Status indicators */}
                   <div className="flex gap-1.5 flex-wrap">
                     {land.need_water && (
                       <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
-                        Dry
+                        缺水
                       </span>
                     )}
                     {land.need_weed_out && (
                       <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-700">
-                        Weeds
+                        有草
                       </span>
                     )}
                     {land.need_insecticide && (
                       <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
-                        Bugs
+                        有虫
                       </span>
                     )}
                   </div>

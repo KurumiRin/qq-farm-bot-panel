@@ -51,15 +51,12 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold">Dashboard</h1>
+        <h1 className="text-xl font-bold">仪表盘</h1>
         <p className="text-sm text-on-surface-muted">
-          {isOnline
-            ? `Welcome back, ${user.name}`
-            : "Not connected"}
+          {isOnline ? `欢迎回来，${user.name}` : "未连接"}
         </p>
       </div>
 
-      {/* User info cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card>
           <div className="flex items-center gap-3">
@@ -67,7 +64,7 @@ export default function DashboardPage() {
               <Coins className="size-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-xs text-on-surface-muted">Gold</p>
+              <p className="text-xs text-on-surface-muted">金币</p>
               <p className="text-lg font-bold">{user.gold.toLocaleString()}</p>
             </div>
           </div>
@@ -78,7 +75,7 @@ export default function DashboardPage() {
               <TrendingUp className="size-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-on-surface-muted">Level</p>
+              <p className="text-xs text-on-surface-muted">等级</p>
               <p className="text-lg font-bold">{user.level}</p>
             </div>
           </div>
@@ -89,7 +86,7 @@ export default function DashboardPage() {
               <TrendingUp className="size-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-xs text-on-surface-muted">EXP</p>
+              <p className="text-xs text-on-surface-muted">经验</p>
               <p className="text-lg font-bold">{user.exp.toLocaleString()}</p>
             </div>
           </div>
@@ -100,69 +97,68 @@ export default function DashboardPage() {
               <Coins className="size-5 text-pink-600" />
             </div>
             <div>
-              <p className="text-xs text-on-surface-muted">Coupons</p>
+              <p className="text-xs text-on-surface-muted">点券</p>
               <p className="text-lg font-bold">{user.coupon}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Stats */}
-      <Card title="Session Statistics">
+      <Card title="本次统计">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <StatItem
             icon={<Sprout className="size-4" />}
-            label="Harvests"
+            label="收获"
             value={stats.harvests}
           />
           <StatItem
             icon={<Sprout className="size-4" />}
-            label="Plants"
+            label="播种"
             value={stats.plants}
           />
           <StatItem
             icon={<Droplets className="size-4" />}
-            label="Watered"
+            label="浇水"
             value={stats.waters}
           />
           <StatItem
             icon={<Scissors className="size-4" />}
-            label="Weeds Removed"
+            label="除草"
             value={stats.weeds_removed}
           />
           <StatItem
             icon={<Bug className="size-4" />}
-            label="Insects Removed"
+            label="除虫"
             value={stats.insects_removed}
           />
           <StatItem
             icon={<Swords className="size-4" />}
-            label="Steals"
+            label="偷菜"
             value={stats.steals}
           />
           <StatItem
             icon={<Users className="size-4" />}
-            label="Help Waters"
+            label="帮浇水"
             value={stats.help_waters}
           />
           <StatItem
             icon={<Coins className="size-4" />}
-            label="Gold Earned"
+            label="获得金币"
             value={stats.gold_earned.toLocaleString()}
           />
           <StatItem
             icon={<Package className="size-4" />}
-            label="Items Sold"
+            label="售出物品"
             value={stats.items_sold}
           />
           <StatItem
             icon={<ListChecks className="size-4" />}
-            label="Tasks Claimed"
+            label="领取任务"
             value={stats.tasks_claimed}
           />
           <StatItem
             icon={<Mail className="size-4" />}
-            label="Emails Claimed"
+            label="领取邮件"
             value={stats.emails_claimed}
           />
         </div>

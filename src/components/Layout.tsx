@@ -18,12 +18,12 @@ import { useStatus } from "../hooks/useStatus";
 import * as api from "../api";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/farm", icon: Sprout, label: "Farm" },
-  { to: "/friends", icon: Users, label: "Friends" },
-  { to: "/inventory", icon: Package, label: "Inventory" },
-  { to: "/tasks", icon: ListTodo, label: "Tasks" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/", icon: LayoutDashboard, label: "仪表盘" },
+  { to: "/farm", icon: Sprout, label: "农场" },
+  { to: "/friends", icon: Users, label: "好友" },
+  { to: "/inventory", icon: Package, label: "仓库" },
+  { to: "/tasks", icon: ListTodo, label: "任务" },
+  { to: "/settings", icon: Settings, label: "设置" },
 ] as const;
 
 function ConnectionBadge({ connected }: { connected: boolean }) {
@@ -37,7 +37,7 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
       )}
     >
       {connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-      {connected ? "Online" : "Offline"}
+      {connected ? "已连接" : "未连接"}
     </div>
   );
 }
@@ -59,57 +59,72 @@ export default function Layout() {
 
   const closeMobile = () => setMobileOpen(false);
 
+  const sidebarContent = (mobile: boolean) => (
+    <>
+      <div className="px-5 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Sprout className="size-7 text-primary-500" />
+            <span className="text-lg font-semibold">Farm Pilot</span>
+          </div>
+          {mobile && (
+            <button onClick={closeMobile}>
+              <X className="size-5 text-on-surface-muted" />
+            </button>
+          )}
+        </div>
+        {status?.user && status.user.gid !== 0 && (
+          <div className="mt-3 rounded-lg bg-surface-bright px-3 py-2">
+            <p className="text-sm font-medium truncate">{status.user.name}</p>
+            <p className="text-xs text-on-surface-muted">
+              Lv.{status.user.level} | 金币: {status.user.gold.toLocaleString()}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <nav className="flex-1 px-3 py-1 space-y-0.5 overflow-y-auto">
+        {navItems.map(({ to, icon: Icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === "/"}
+            onClick={mobile ? closeMobile : undefined}
+            className={({ isActive }) =>
+              clsx(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-primary-50 text-primary-700"
+                  : "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface"
+              )
+            }
+          >
+            <Icon className="size-4" />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="px-3 py-3 border-t border-border space-y-2">
+        <ConnectionBadge connected={isConnected} />
+        {isConnected && (
+          <button
+            onClick={handleDisconnect}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="size-4" />
+            断开连接
+          </button>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-60 flex-col border-r border-border bg-surface">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
-          <Sprout className="size-7 text-primary-500" />
-          <span className="text-lg font-semibold">Farm Pilot</span>
-        </div>
-
-        {status?.user && status.user.gid !== 0 && (
-          <div className="px-5 py-3 border-b border-border">
-            <p className="text-sm font-medium truncate">{status.user.name}</p>
-            <p className="text-xs text-on-surface-muted">
-              Lv.{status.user.level} | Gold: {status.user.gold.toLocaleString()}
-            </p>
-          </div>
-        )}
-
-        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface"
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="px-3 py-3 border-t border-border space-y-2">
-          <ConnectionBadge connected={isConnected} />
-          {isConnected && (
-            <button
-              onClick={handleDisconnect}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <LogOut className="size-4" />
-              Disconnect
-            </button>
-          )}
-        </div>
+        {sidebarContent(false)}
       </aside>
 
       {/* Mobile overlay */}
@@ -123,63 +138,11 @@ export default function Layout() {
       {/* Mobile sidebar */}
       <aside
         className={clsx(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-surface border-r border-border transition-transform duration-200 md:hidden",
+          "fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-surface border-r border-border transition-transform duration-200 md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <Sprout className="size-7 text-primary-500" />
-            <span className="text-lg font-semibold">Farm Pilot</span>
-          </div>
-          <button onClick={closeMobile}>
-            <X className="size-5 text-on-surface-muted" />
-          </button>
-        </div>
-
-        {status?.user && status.user.gid !== 0 && (
-          <div className="px-5 py-3 border-b border-border">
-            <p className="text-sm font-medium truncate">{status.user.name}</p>
-            <p className="text-xs text-on-surface-muted">
-              Lv.{status.user.level} | Gold: {status.user.gold.toLocaleString()}
-            </p>
-          </div>
-        )}
-
-        <nav className="px-3 py-2 space-y-0.5">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              onClick={closeMobile}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface"
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="absolute bottom-0 left-0 right-0 px-3 py-3 border-t border-border space-y-2">
-          <ConnectionBadge connected={isConnected} />
-          {isConnected && (
-            <button
-              onClick={handleDisconnect}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <LogOut className="size-4" />
-              Disconnect
-            </button>
-          )}
-        </div>
+        {sidebarContent(true)}
       </aside>
 
       {/* Main content */}
