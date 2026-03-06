@@ -31,6 +31,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(tauri_state)
+        .setup(|app| {
+            state::set_app_handle(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::request_qr_code,
             commands::check_qr_status,
@@ -49,6 +53,7 @@ pub fn run() {
             commands::get_tasks,
             commands::claim_all_tasks,
             commands::get_shop_info,
+            commands::get_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

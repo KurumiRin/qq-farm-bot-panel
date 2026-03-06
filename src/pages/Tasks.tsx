@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { ListTodo, RefreshCw, Gift } from "lucide-react";
+import { ListTodo, Gift } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
 interface TaskInfo {
@@ -36,6 +37,14 @@ export default function TasksPage() {
     fetchTasks();
   }, [fetchTasks]);
 
+  const handleDataChanged = useCallback(
+    (scope: string) => {
+      if (scope === "tasks") fetchTasks();
+    },
+    [fetchTasks]
+  );
+  useTauriEvent("data-changed", handleDataChanged);
+
   const handleClaimAll = async () => {
     setClaiming(true);
     try {
@@ -61,27 +70,16 @@ export default function TasksPage() {
             共 {tasks.length} 个任务 | {claimableCount} 个可领取
           </p>
         </div>
-        <div className="flex gap-2">
+        {claimableCount > 0 && (
           <Button
-            variant="secondary"
             size="sm"
-            icon={<RefreshCw className="size-3.5" />}
-            onClick={fetchTasks}
-            loading={loading}
+            icon={<Gift className="size-3.5" />}
+            onClick={handleClaimAll}
+            loading={claiming}
           >
-            刷新
+            全部领取
           </Button>
-          {claimableCount > 0 && (
-            <Button
-              size="sm"
-              icon={<Gift className="size-3.5" />}
-              onClick={handleClaimAll}
-              loading={claiming}
-            >
-              全部领取
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {tasks.length === 0 && !loading ? (

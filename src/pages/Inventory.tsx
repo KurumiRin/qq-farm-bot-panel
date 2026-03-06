@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Package, RefreshCw, ShoppingCart } from "lucide-react";
+import { Package, ShoppingCart } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
 interface BagItem {
@@ -33,6 +34,14 @@ export default function InventoryPage() {
     fetchBag();
   }, [fetchBag]);
 
+  const handleDataChanged = useCallback(
+    (scope: string) => {
+      if (scope === "inventory") fetchBag();
+    },
+    [fetchBag]
+  );
+  useTauriEvent("data-changed", handleDataChanged);
+
   const handleSellAll = async () => {
     setSelling(true);
     try {
@@ -54,26 +63,15 @@ export default function InventoryPage() {
             共 {items.length} 件物品
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<RefreshCw className="size-3.5" />}
-            onClick={fetchBag}
-            loading={loading}
-          >
-            刷新
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            icon={<ShoppingCart className="size-3.5" />}
-            onClick={handleSellAll}
-            loading={selling}
-          >
-            卖出果实
-          </Button>
-        </div>
+        <Button
+          variant="danger"
+          size="sm"
+          icon={<ShoppingCart className="size-3.5" />}
+          onClick={handleSellAll}
+          loading={selling}
+        >
+          卖出果实
+        </Button>
       </div>
 
       {items.length === 0 && !loading ? (

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Sprout, Scissors, RefreshCw } from "lucide-react";
+import { Sprout, Scissors } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
 interface LandInfo {
@@ -60,6 +61,15 @@ export default function FarmPage() {
     fetchLands();
   }, [fetchLands]);
 
+  // Auto-refresh when automation completes a farm cycle
+  const handleDataChanged = useCallback(
+    (scope: string) => {
+      if (scope === "farm") fetchLands();
+    },
+    [fetchLands]
+  );
+  useTauriEvent("data-changed", handleDataChanged);
+
   const handleHarvestAll = async () => {
     const matureIds = lands
       .filter((l) => l.phase === 6)
@@ -89,27 +99,16 @@ export default function FarmPage() {
             {lands.length} 块土地 | {matureCount} 块可收获
           </p>
         </div>
-        <div className="flex gap-2">
+        {matureCount > 0 && (
           <Button
-            variant="secondary"
             size="sm"
-            icon={<RefreshCw className="size-3.5" />}
-            onClick={fetchLands}
-            loading={loading}
+            icon={<Scissors className="size-3.5" />}
+            onClick={handleHarvestAll}
+            loading={harvesting}
           >
-            刷新
+            全部收获 ({matureCount})
           </Button>
-          {matureCount > 0 && (
-            <Button
-              size="sm"
-              icon={<Scissors className="size-3.5" />}
-              onClick={handleHarvestAll}
-              loading={harvesting}
-            >
-              全部收获 ({matureCount})
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {lands.length === 0 && !loading ? (

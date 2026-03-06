@@ -1,29 +1,30 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { StatusResponse } from "../types";
 import * as api from "../api";
+import { useTauriEvent } from "./useTauriEvent";
 
-export function useStatus(polling = true, intervalMs = 2000) {
+export function useStatus() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  const refresh = useCallback(async () => {
-    try {
-      const s = await api.getStatus();
-      setStatus(s);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    }
+  // Initial fetch
+  useEffect(() => {
+    api
+      .getStatus()
+      .then((s) => {
+        setStatus(s);
+        setError(null);
+      })
+      .catch((e) => setError(String(e)));
   }, []);
 
-  useEffect(() => {
-    refresh();
-    if (polling) {
-      timerRef.current = setInterval(refresh, intervalMs);
-      return () => clearInterval(timerRef.current);
-    }
-  }, [polling, intervalMs, refresh]);
+  // Listen for backend push events
+  const handleStatusChanged = useCallback((payload: StatusResponse) => {
+    setStatus(payload);
+    setError(null);
+  }, []);
 
-  return { status, error, refresh };
+  useTauriEvent("status-changed", handleStatusChanged);
+
+  return { status, error };
 }

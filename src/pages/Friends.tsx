@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Users, RefreshCw } from "lucide-react";
+import { Users } from "lucide-react";
 import { Card } from "../components/Card";
-import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
 interface FriendInfo {
@@ -34,24 +34,21 @@ export default function FriendsPage() {
     fetchFriends();
   }, [fetchFriends]);
 
+  const handleDataChanged = useCallback(
+    (scope: string) => {
+      if (scope === "friends") fetchFriends();
+    },
+    [fetchFriends]
+  );
+  useTauriEvent("data-changed", handleDataChanged);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">好友</h1>
-          <p className="text-sm text-on-surface-muted">
-            共 {friends.length} 位好友
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<RefreshCw className="size-3.5" />}
-          onClick={fetchFriends}
-          loading={loading}
-        >
-          刷新
-        </Button>
+      <div>
+        <h1 className="text-xl font-bold">好友</h1>
+        <p className="text-sm text-on-surface-muted">
+          共 {friends.length} 位好友
+        </p>
       </div>
 
       {friends.length === 0 && !loading ? (
