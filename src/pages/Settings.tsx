@@ -2,8 +2,15 @@ import { useState, useEffect, useCallback } from "react";
 import { Save } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import type { AutomationConfig } from "../types";
+import { SEEDS } from "../data/seeds";
+import type {
+  AutomationConfig,
+  PlantingStrategy,
+  FertilizerStrategy,
+} from "../types";
 import * as api from "../api";
+
+// --- Sub-components ---
 
 interface ToggleRowProps {
   label: string;
@@ -14,19 +21,24 @@ interface ToggleRowProps {
 
 function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
   return (
-    <label className="flex items-center justify-between py-2 cursor-pointer">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium leading-tight">{label}</p>
         {description && (
-          <p className="text-xs text-on-surface-muted">{description}</p>
+          <p className="text-xs text-on-surface-muted leading-tight mt-0.5">
+            {description}
+          </p>
         )}
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+        onClick={(e) => {
+          e.stopPropagation();
+          onChange(!checked);
+        }}
+        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
           checked ? "bg-primary-500" : "bg-gray-300"
         }`}
       >
@@ -36,27 +48,99 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
           }`}
         />
       </button>
-    </label>
+    </div>
   );
 }
 
+interface InlineToggleProps {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}
+
+function InlineToggle({ label, checked, onChange }: InlineToggleProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors ${
+        checked
+          ? "bg-primary-500/10 text-primary-600"
+          : "bg-gray-100 text-on-surface-muted"
+      }`}
+    >
+      <span
+        className={`size-1.5 rounded-full ${
+          checked ? "bg-primary-500" : "bg-gray-300"
+        }`}
+      />
+      {label}
+    </button>
+  );
+}
+
+const inputClass =
+  "w-full h-9 rounded-lg border border-border bg-surface-dim px-3 text-sm outline-none focus:border-primary-500 focus:outline-1 focus:outline-primary-500";
+
+const selectClass = `${inputClass} appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23999%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-size-[16px] bg-position-[right_8px_center] bg-no-repeat pr-8`;
+
+// --- Constants ---
+
+const STRATEGY_OPTIONS: {
+  value: PlantingStrategy;
+  label: string;
+}[] = [
+  { value: "preferred", label: "指定种子" },
+  { value: "level", label: "最高等级作物" },
+  { value: "max_exp", label: "最大经验/时" },
+  { value: "max_profit", label: "最大利润/时" },
+];
+
+const FERTILIZER_OPTIONS: { value: FertilizerStrategy; label: string }[] = [
+  { value: "none", label: "不施肥" },
+  { value: "both", label: "普通 + 有机" },
+  { value: "normal", label: "仅普通化肥" },
+  { value: "organic", label: "仅有机化肥" },
+];
+
 const defaultConfig: AutomationConfig = {
+  planting_strategy: "preferred",
+  preferred_seed_id: null,
+  intervals: { farm_min: 2, farm_max: 2, friend_min: 10, friend_max: 10 },
+  friend_quiet_hours: { enabled: false, start: "23:00", end: "07:00" },
+
   auto_harvest: true,
   auto_plant: true,
+  auto_farm_manage: true,
   auto_water: true,
   auto_weed: true,
   auto_insecticide: true,
-  auto_fertilize: false,
+  fertilizer_strategy: "none",
+  auto_land_upgrade: false,
+  auto_farm_push: true,
+
   auto_sell: true,
+  auto_claim_tasks: true,
+  auto_claim_emails: true,
+  auto_free_gifts: false,
+  auto_share_reward: false,
+  auto_vip_gift: false,
+  auto_month_card: false,
+  auto_open_server_gift: false,
+  auto_fertilizer_gift: false,
+  auto_fertilizer_buy: false,
+
   auto_steal: true,
   auto_help_water: true,
   auto_help_weed: true,
   auto_help_insecticide: true,
-  auto_claim_tasks: true,
-  auto_claim_emails: true,
-  preferred_seed_id: null,
+  auto_friend_bad: false,
+  auto_friend_help_exp_limit: false,
+
   friend_blacklist: [],
 };
+
+// --- Main Component ---
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<AutomationConfig>(defaultConfig);
@@ -85,6 +169,36 @@ export default function SettingsPage() {
     setSaved(false);
   };
 
+  const set = <K extends keyof AutomationConfig>(
+    key: K,
+    value: AutomationConfig[K]
+  ) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const setInterval = (
+    key: keyof AutomationConfig["intervals"],
+    value: number
+  ) => {
+    setConfig((prev) => ({
+      ...prev,
+      intervals: { ...prev.intervals, [key]: value },
+    }));
+    setSaved(false);
+  };
+
+  const setQuietHours = (
+    key: keyof AutomationConfig["friend_quiet_hours"],
+    value: string | boolean
+  ) => {
+    setConfig((prev) => ({
+      ...prev,
+      friend_quiet_hours: { ...prev.friend_quiet_hours, [key]: value },
+    }));
+    setSaved(false);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -107,141 +221,297 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">设置</h1>
-          <p className="text-sm text-on-surface-muted">
-            配置自动化行为
-          </p>
+    <div className="relative max-w-2xl">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-surface-dim pb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">设置</h1>
+            <p className="text-sm text-on-surface-muted">配置自动化行为</p>
+          </div>
+          <Button
+            size="sm"
+            icon={saved ? undefined : <Save className="size-3.5" />}
+            onClick={handleSave}
+            loading={saving}
+          >
+            {saved ? "已保存" : "保存"}
+          </Button>
         </div>
-        <Button
-          size="sm"
-          icon={saved ? undefined : <Save className="size-3.5" />}
-          onClick={handleSave}
-          loading={saving}
-        >
-          {saved ? "已保存" : "保存"}
-        </Button>
+        <div className="absolute bottom-0 left-0 right-0 h-4 bg-linear-to-b from-surface-dim to-transparent pointer-events-none" />
       </div>
 
-      <Card title="农场自动化">
-        <div className="divide-y divide-border">
-          <ToggleRow
-            label="自动收获"
-            description="自动收获成熟作物"
-            checked={config.auto_harvest}
-            onChange={() => toggle("auto_harvest")}
-          />
-          <ToggleRow
-            label="自动播种"
-            description="收获后自动重新播种"
-            checked={config.auto_plant}
-            onChange={() => toggle("auto_plant")}
-          />
-          <ToggleRow
-            label="自动浇水"
-            description="自动给缺水作物浇水"
-            checked={config.auto_water}
-            onChange={() => toggle("auto_water")}
-          />
-          <ToggleRow
-            label="自动除草"
-            description="自动清除杂草"
-            checked={config.auto_weed}
-            onChange={() => toggle("auto_weed")}
-          />
-          <ToggleRow
-            label="自动除虫"
-            description="自动清除害虫"
-            checked={config.auto_insecticide}
-            onChange={() => toggle("auto_insecticide")}
-          />
-          <ToggleRow
-            label="自动施肥"
-            description="自动使用化肥"
-            checked={config.auto_fertilize}
-            onChange={() => toggle("auto_fertilize")}
-          />
-        </div>
-      </Card>
+      <div className="space-y-5">
+        {/* ===== 种植策略 ===== */}
+        <Card title="种植策略" collapsible>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-on-surface-muted mb-1 block">
+                  播种策略
+                </label>
+                <select
+                  value={config.planting_strategy}
+                  onChange={(e) =>
+                    set("planting_strategy", e.target.value as PlantingStrategy)
+                  }
+                  className={selectClass}
+                >
+                  {STRATEGY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-      <Card title="出售与领取">
-        <div className="divide-y divide-border">
-          <ToggleRow
-            label="自动出售"
-            description="自动出售果实"
-            checked={config.auto_sell}
-            onChange={() => toggle("auto_sell")}
-          />
-          <ToggleRow
-            label="自动领取任务"
-            description="自动领取任务奖励"
-            checked={config.auto_claim_tasks}
-            onChange={() => toggle("auto_claim_tasks")}
-          />
-          <ToggleRow
-            label="自动领取邮件"
-            description="自动领取邮件奖励"
-            checked={config.auto_claim_emails}
-            onChange={() => toggle("auto_claim_emails")}
-          />
-        </div>
-      </Card>
+              {config.planting_strategy === "preferred" ? (
+                <div>
+                  <label className="text-xs text-on-surface-muted mb-1 block">
+                    优先种植种子
+                  </label>
+                  <select
+                    value={config.preferred_seed_id ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set("preferred_seed_id", v ? parseInt(v, 10) : null);
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="">自动选择</option>
+                    {SEEDS.map((seed) => (
+                      <option key={seed.id} value={seed.id}>
+                        {seed.level}级 {seed.name} ({seed.price}金)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs text-on-surface-muted mb-1 block">
+                    策略选种预览
+                  </label>
+                  <div className={`${inputClass} flex items-center text-on-surface-muted`}>
+                    由系统自动选择
+                  </div>
+                </div>
+              )}
+            </div>
 
-      <Card title="社交">
-        <div className="divide-y divide-border">
-          <ToggleRow
-            label="自动偷菜"
-            description="自动偷取好友农场的作物"
-            checked={config.auto_steal}
-            onChange={() => toggle("auto_steal")}
-          />
-          <ToggleRow
-            label="自动帮浇水"
-            description="帮好友的作物浇水"
-            checked={config.auto_help_water}
-            onChange={() => toggle("auto_help_water")}
-          />
-          <ToggleRow
-            label="自动帮除草"
-            description="帮好友清除杂草"
-            checked={config.auto_help_weed}
-            onChange={() => toggle("auto_help_weed")}
-          />
-          <ToggleRow
-            label="自动帮除虫"
-            description="帮好友清除害虫"
-            checked={config.auto_help_insecticide}
-            onChange={() => toggle("auto_help_insecticide")}
-          />
-        </div>
-      </Card>
+            <div className="grid grid-cols-4 gap-3">
+              {(
+                [
+                  ["farm_min", "农场最小"],
+                  ["farm_max", "农场最大"],
+                  ["friend_min", "好友最小"],
+                  ["friend_max", "好友最大"],
+                ] as const
+              ).map(([key, label]) => (
+                <div key={key}>
+                  <label className="text-xs text-on-surface-muted mb-1 block">
+                    {label}
+                    <span className="opacity-50"> (秒)</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={config.intervals[key]}
+                    onChange={(e) =>
+                      setInterval(
+                        key,
+                        Math.max(1, Math.min(86400, parseInt(e.target.value) || 1))
+                      )
+                    }
+                    min={1}
+                    max={86400}
+                    className={`${inputClass} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+                  />
+                </div>
+              ))}
+            </div>
 
-      <Card title="偏好设置">
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium">首选种子 ID</label>
-            <p className="text-xs text-on-surface-muted mb-1.5">
-              自动播种时使用的种子（留空则使用默认）
-            </p>
-            <input
-              type="number"
-              value={config.preferred_seed_id ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setConfig((prev) => ({
-                  ...prev,
-                  preferred_seed_id: val ? parseInt(val, 10) : null,
-                }));
-                setSaved(false);
-              }}
-              placeholder="例如 10001"
-              className="w-full rounded-lg border border-border bg-surface-dim px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <ToggleRow
+                    label="启用静默时段"
+                    checked={config.friend_quiet_hours.enabled}
+                    onChange={(v) => setQuietHours("enabled", v)}
+                  />
+                </div>
+                {config.friend_quiet_hours.enabled && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="time"
+                      value={config.friend_quiet_hours.start}
+                      onChange={(e) => setQuietHours("start", e.target.value)}
+                      className={`${inputClass} w-28`}
+                    />
+                    <span className="text-on-surface-muted text-xs">至</span>
+                    <input
+                      type="time"
+                      value={config.friend_quiet_hours.end}
+                      onChange={(e) => setQuietHours("end", e.target.value)}
+                      className={`${inputClass} w-28`}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* ===== 农场自动化 ===== */}
+        <Card title="农场自动化" collapsible>
+          <div className="divide-y divide-border">
+            <ToggleRow
+              label="自动种植收获"
+              description="自动收获成熟作物并重新播种"
+              checked={config.auto_harvest}
+              onChange={() => toggle("auto_harvest")}
+            />
+            <div>
+              <ToggleRow
+                label="自动打理农场"
+                description="自动浇水、除草、除虫"
+                checked={config.auto_farm_manage}
+                onChange={() => toggle("auto_farm_manage")}
+              />
+              {config.auto_farm_manage && (
+                <div className="flex flex-wrap gap-1.5 pb-2.5">
+                  <InlineToggle label="浇水" checked={config.auto_water} onChange={() => toggle("auto_water")} />
+                  <InlineToggle label="除草" checked={config.auto_weed} onChange={() => toggle("auto_weed")} />
+                  <InlineToggle label="除虫" checked={config.auto_insecticide} onChange={() => toggle("auto_insecticide")} />
+                </div>
+              )}
+            </div>
+            <ToggleRow
+              label="自动升级土地"
+              description="有足够金币时自动升级"
+              checked={config.auto_land_upgrade}
+              onChange={() => toggle("auto_land_upgrade")}
+            />
+            <ToggleRow
+              label="推送触发巡田"
+              description="收到服务器推送时立即巡田"
+              checked={config.auto_farm_push}
+              onChange={() => toggle("auto_farm_push")}
             />
           </div>
-        </div>
-      </Card>
+          <div className="mt-1 pt-1">
+            <label className="text-xs text-on-surface-muted mb-1 block">
+              施肥策略
+            </label>
+            <select
+              value={config.fertilizer_strategy}
+              onChange={(e) =>
+                set("fertilizer_strategy", e.target.value as FertilizerStrategy)
+              }
+              className={`${selectClass} max-w-xs`}
+            >
+              {FERTILIZER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Card>
+
+        {/* ===== 出售与领取 ===== */}
+        <Card title="出售与领取" collapsible>
+          <div className="divide-y divide-border">
+            <ToggleRow
+              label="自动卖果实"
+              description="收获后自动出售"
+              checked={config.auto_sell}
+              onChange={() => toggle("auto_sell")}
+            />
+            <ToggleRow
+              label="自动做任务"
+              description="自动领取任务奖励"
+              checked={config.auto_claim_tasks}
+              onChange={() => toggle("auto_claim_tasks")}
+            />
+            <ToggleRow
+              label="自动领取邮件"
+              checked={config.auto_claim_emails}
+              onChange={() => toggle("auto_claim_emails")}
+            />
+            <ToggleRow
+              label="自动商城礼包"
+              description="领取免费商城礼包"
+              checked={config.auto_free_gifts}
+              onChange={() => toggle("auto_free_gifts")}
+            />
+            <ToggleRow
+              label="自动分享奖励"
+              checked={config.auto_share_reward}
+              onChange={() => toggle("auto_share_reward")}
+            />
+            <ToggleRow
+              label="自动VIP礼包"
+              checked={config.auto_vip_gift}
+              onChange={() => toggle("auto_vip_gift")}
+            />
+            <ToggleRow
+              label="自动月卡奖励"
+              checked={config.auto_month_card}
+              onChange={() => toggle("auto_month_card")}
+            />
+            <ToggleRow
+              label="自动开服红包"
+              checked={config.auto_open_server_gift}
+              onChange={() => toggle("auto_open_server_gift")}
+            />
+            <ToggleRow
+              label="自动填充化肥"
+              description="自动从背包填充化肥槽"
+              checked={config.auto_fertilizer_gift}
+              onChange={() => toggle("auto_fertilizer_gift")}
+            />
+            <ToggleRow
+              label="自动购买化肥"
+              description="化肥不足时自动购买"
+              checked={config.auto_fertilizer_buy}
+              onChange={() => toggle("auto_fertilizer_buy")}
+            />
+          </div>
+        </Card>
+
+        {/* ===== 社交 ===== */}
+        <Card title="社交" collapsible>
+          <div className="divide-y divide-border">
+            <ToggleRow
+              label="自动偷菜"
+              description="自动偷取好友农场的成熟作物"
+              checked={config.auto_steal}
+              onChange={() => toggle("auto_steal")}
+            />
+            <div>
+              <ToggleRow
+                label="自动帮忙"
+                description="帮好友浇水、除草、除虫"
+                checked={config.auto_help_water}
+                onChange={() => toggle("auto_help_water")}
+              />
+              {config.auto_help_water && (
+                <div className="flex flex-wrap gap-1.5 pb-2.5">
+                  <InlineToggle label="浇水" checked={config.auto_help_water} onChange={() => toggle("auto_help_water")} />
+                  <InlineToggle label="除草" checked={config.auto_help_weed} onChange={() => toggle("auto_help_weed")} />
+                  <InlineToggle label="除虫" checked={config.auto_help_insecticide} onChange={() => toggle("auto_help_insecticide")} />
+                  <InlineToggle label="经验上限停止" checked={config.auto_friend_help_exp_limit} onChange={() => toggle("auto_friend_help_exp_limit")} />
+                </div>
+              )}
+            </div>
+            <ToggleRow
+              label="自动捣乱"
+              description="给好友农场放虫、放草"
+              checked={config.auto_friend_bad}
+              onChange={() => toggle("auto_friend_bad")}
+            />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

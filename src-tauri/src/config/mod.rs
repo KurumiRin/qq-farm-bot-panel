@@ -77,44 +77,171 @@ pub mod item_ids {
     pub const EXP_ITEM: i64 = 1101;
 }
 
+/// Planting strategy
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlantingStrategy {
+    #[default]
+    Preferred,
+    Level,
+    MaxExp,
+    MaxProfit,
+}
+
+/// Fertilizer strategy
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FertilizerStrategy {
+    #[default]
+    None,
+    Normal,
+    Organic,
+    Both,
+}
+
+/// Interval settings (in seconds)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntervalConfig {
+    pub farm_min: u64,
+    pub farm_max: u64,
+    pub friend_min: u64,
+    pub friend_max: u64,
+}
+
+impl Default for IntervalConfig {
+    fn default() -> Self {
+        Self {
+            farm_min: 2,
+            farm_max: 2,
+            friend_min: 10,
+            friend_max: 10,
+        }
+    }
+}
+
+/// Friend quiet hours
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuietHoursConfig {
+    pub enabled: bool,
+    pub start: String,
+    pub end: String,
+}
+
+impl Default for QuietHoursConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start: "23:00".to_string(),
+            end: "07:00".to_string(),
+        }
+    }
+}
+
 /// Automation settings per account
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationConfig {
+    // -- Strategy --
+    #[serde(default)]
+    pub planting_strategy: PlantingStrategy,
+    pub preferred_seed_id: Option<i64>,
+    #[serde(default)]
+    pub intervals: IntervalConfig,
+    #[serde(default)]
+    pub friend_quiet_hours: QuietHoursConfig,
+
+    // -- Farm --
     pub auto_harvest: bool,
     pub auto_plant: bool,
+    #[serde(default = "default_true")]
+    pub auto_farm_manage: bool,
     pub auto_water: bool,
     pub auto_weed: bool,
     pub auto_insecticide: bool,
-    pub auto_fertilize: bool,
+    #[serde(default)]
+    pub fertilizer_strategy: FertilizerStrategy,
+    #[serde(default)]
+    pub auto_land_upgrade: bool,
+    #[serde(default = "default_true")]
+    pub auto_farm_push: bool,
+
+    // -- Sell & Claim --
     pub auto_sell: bool,
+    pub auto_claim_tasks: bool,
+    pub auto_claim_emails: bool,
+    #[serde(default)]
+    pub auto_free_gifts: bool,
+    #[serde(default)]
+    pub auto_share_reward: bool,
+    #[serde(default)]
+    pub auto_vip_gift: bool,
+    #[serde(default)]
+    pub auto_month_card: bool,
+    #[serde(default)]
+    pub auto_open_server_gift: bool,
+    #[serde(default)]
+    pub auto_fertilizer_gift: bool,
+    #[serde(default)]
+    pub auto_fertilizer_buy: bool,
+
+    // -- Social --
     pub auto_steal: bool,
     pub auto_help_water: bool,
     pub auto_help_weed: bool,
     pub auto_help_insecticide: bool,
-    pub auto_claim_tasks: bool,
-    pub auto_claim_emails: bool,
-    pub preferred_seed_id: Option<i64>,
+    #[serde(default)]
+    pub auto_friend_bad: bool,
+    #[serde(default)]
+    pub auto_friend_help_exp_limit: bool,
+
     pub friend_blacklist: Vec<i64>,
+
+    // Legacy field - kept for deserialization compat, ignored
+    #[serde(default, skip_serializing)]
+    pub auto_fertilize: Option<bool>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AutomationConfig {
     fn default() -> Self {
         Self {
+            planting_strategy: PlantingStrategy::default(),
+            preferred_seed_id: None,
+            intervals: IntervalConfig::default(),
+            friend_quiet_hours: QuietHoursConfig::default(),
+
             auto_harvest: true,
             auto_plant: true,
+            auto_farm_manage: true,
             auto_water: true,
             auto_weed: true,
             auto_insecticide: true,
-            auto_fertilize: false,
+            fertilizer_strategy: FertilizerStrategy::default(),
+            auto_land_upgrade: false,
+            auto_farm_push: true,
+
             auto_sell: true,
+            auto_claim_tasks: true,
+            auto_claim_emails: true,
+            auto_free_gifts: false,
+            auto_share_reward: false,
+            auto_vip_gift: false,
+            auto_month_card: false,
+            auto_open_server_gift: false,
+            auto_fertilizer_gift: false,
+            auto_fertilizer_buy: false,
+
             auto_steal: true,
             auto_help_water: true,
             auto_help_weed: true,
             auto_help_insecticide: true,
-            auto_claim_tasks: true,
-            auto_claim_emails: true,
-            preferred_seed_id: None,
+            auto_friend_bad: false,
+            auto_friend_help_exp_limit: false,
+
             friend_blacklist: Vec::new(),
+            auto_fertilize: None,
         }
     }
 }
