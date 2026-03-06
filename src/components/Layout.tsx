@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
 import {
   LayoutDashboard,
@@ -11,7 +11,7 @@ import {
   LogOut,
   Circle,
 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useRef, useState, useLayoutEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatus } from "../hooks/useStatus";
 import * as api from "../api";
@@ -32,6 +32,56 @@ const navItems = [
   { to: "/settings", icon: Settings, label: "设置" },
   { to: "/logs", icon: ScrollText, label: "日志" },
 ] as const;
+
+function NavList({ items }: { items: typeof navItems }) {
+  const location = useLocation();
+  const navRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState({ top: 0, height: 0, ready: false });
+
+  const activeIndex = items.findIndex(({ to }) =>
+    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to)
+  );
+
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav || activeIndex < 0) return;
+    const links = nav.querySelectorAll<HTMLElement>("a");
+    const el = links[activeIndex];
+    if (!el) return;
+    setIndicator({ top: el.offsetTop, height: el.offsetHeight, ready: true });
+  }, [activeIndex]);
+
+  return (
+    <nav ref={navRef} className="relative flex-1 px-3 space-y-0.5 overflow-y-auto">
+      {/* Sliding indicator */}
+      <div
+        className={clsx(
+          "absolute left-3 right-3 rounded-lg bg-primary-500 shadow-sm pointer-events-none",
+          indicator.ready ? "transition-all duration-300 ease-in-out" : "opacity-0"
+        )}
+        style={{ top: indicator.top, height: indicator.height }}
+      />
+      {items.map(({ to, icon: Icon, label }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={to === "/"}
+          className={({ isActive }) =>
+            clsx(
+              "relative z-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
+              isActive
+                ? "text-white"
+                : "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface"
+            )
+          }
+        >
+          <Icon className="size-4" />
+          {label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
 
 export default function Layout() {
   const { status } = useStatus();
@@ -87,26 +137,7 @@ export default function Layout() {
         )}
 
         {/* Nav */}
-        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
-                  isActive
-                    ? "bg-primary-500 text-white shadow-sm"
-                    : "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface"
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
+        <NavList items={navItems} />
 
         {/* Bottom status */}
         <div className="mx-3 my-3 rounded-lg border border-border p-3 space-y-2.5">
@@ -138,7 +169,7 @@ export default function Layout() {
         <div className={DRAG_CLASS} onMouseDown={startDrag} />
         <div className="h-11 shrink-0" />
 
-        <main className="flex-1 overflow-y-auto px-6 py-6">
+        <main className="flex-1 overflow-y-auto px-6 py-6 will-change-transform">
           <Outlet />
         </main>
       </div>
