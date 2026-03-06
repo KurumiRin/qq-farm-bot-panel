@@ -42,28 +42,60 @@
     cursor: pointer;
   }
 
-  /* 细滚动条 */
+  /* Overlay scrollbar — never takes up layout space */
   * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-width: none;
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    display: none;
   }
 
-  ::-webkit-scrollbar-track {
-    background: transparent;
+  /* Page transition animation */
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 3px;
+  .animate-page-enter {
+    animation: page-enter 0.2s ease-out;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-on-surface-muted);
+  /* Tab slide animations */
+  @keyframes slide-left {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-right {
+    from {
+      opacity: 0;
+      transform: translateX(-24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slide-left {
+    animation: slide-left 0.2s ease-out;
+  }
+
+  .animate-slide-right {
+    animation: slide-right 0.2s ease-out;
   }
 
   @media (prefers-color-scheme: dark) {

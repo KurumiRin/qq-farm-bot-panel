@@ -13,6 +13,9 @@ const DEDUP_WINDOW_SECS: u64 = 60;
 const MAX_BIND_RETRIES: u32 = 5;
 const RETRY_DELAY_SECS: u64 = 3;
 
+/// Serialize all connect attempts so concurrent requests don't race
+static CONNECT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Start a tiny HTTP server on port 7788 that accepts POST /code with JSON { "code": "..." }
 /// When a code is received, it connects to the game server and starts automation.
 pub fn start(
@@ -86,7 +89,10 @@ pub fn start(
                 let code = extract_code(&body_str);
 
                 if let Some(code) = code {
-                    // Dedup: skip if same code was used recently
+                    // Acquire connect lock to prevent concurrent connection attempts
+                    let _connect_guard = CONNECT_LOCK.lock().await;
+
+                    // Dedup: skip if same code was used recently (check AFTER acquiring lock)
                     let is_dup = {
                         let guard = last_code.lock().unwrap();
                         matches!(&*guard, Some((prev, ts)) if prev == &code && ts.elapsed().as_secs() < DEDUP_WINDOW_SECS)
@@ -98,6 +104,9 @@ pub fn start(
                         let _ = writer.write_all(resp.as_bytes()).await;
                         return;
                     }
+
+                    // Record code IMMEDIATELY for dedup (before connecting)
+                    *last_code.lock().unwrap() = Some((code.clone(), Instant::now()));
 
                     log::info!("Received code from {}: {}...", addr, &code[..code.len().min(30)]);
                     app_state.push_log(
@@ -117,7 +126,6 @@ pub fn start(
                     // Connect with new code
                     match do_connect(&network, &app_state, &engine, &code).await {
                         Ok(_) => {
-                            *last_code.lock().unwrap() = Some((code.clone(), Instant::now()));
                             let user = app_state.user.read().clone();
                             app_state.push_log(
                                 "info",

@@ -38,14 +38,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 max-w-md">
         {items.map((item) => (
           <div
             key={item.id}
-            className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2 shadow-lg text-sm animate-in slide-in-from-right duration-200"
+            className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 shadow-lg text-sm animate-page-enter"
           >
             {icons[item.type]}
-            <span className="text-on-surface">{item.message}</span>
+            <span className="text-on-surface leading-tight">{item.message}</span>
           </div>
         ))}
       </div>

@@ -84,6 +84,7 @@ function NavList({ items }: { items: typeof navItems }) {
 }
 
 export default function Layout() {
+  const location = useLocation();
   const { status } = useStatus();
 
   const isConnected =
@@ -167,10 +168,11 @@ export default function Layout() {
       {/* Main content */}
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <div className={DRAG_CLASS} onMouseDown={startDrag} />
-        <div className="h-11 shrink-0" />
 
-        <main className="flex-1 overflow-y-auto px-6 py-6 will-change-transform">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto px-6 pt-12 pb-6">
+          <div key={location.pathname} className="animate-page-enter">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

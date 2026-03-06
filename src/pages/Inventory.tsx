@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
@@ -38,12 +38,82 @@ const TAB_LABELS: Record<string, string> = {
   other: "其他",
 };
 
+function TabBar({
+  tabs,
+  tab,
+  setTab,
+  items,
+  bag,
+}: {
+  tabs: readonly string[];
+  tab: string;
+  setTab: (t: string) => void;
+  items: BagItemView[];
+  bag: BagView | null;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false });
+  const activeIndex = tabs.indexOf(tab);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || activeIndex < 0) return;
+    const buttons = container.querySelectorAll<HTMLElement>("button");
+    const el = buttons[activeIndex];
+    if (!el) return;
+    setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
+  }, [activeIndex]);
+
+  return (
+    <div ref={containerRef} className="relative flex gap-0.5 rounded-lg bg-surface-bright/70 p-0.5">
+      {/* Sliding indicator */}
+      <div
+        className={`absolute top-0.5 bottom-0.5 rounded-md bg-surface shadow-sm pointer-events-none ${
+          indicator.ready ? "transition-all duration-250 ease-in-out" : "opacity-0"
+        }`}
+        style={{ left: indicator.left, width: indicator.width }}
+      />
+      {tabs.map((t) => {
+        const count =
+          t === "all"
+            ? items.length
+            : t === "other"
+              ? (bag?.other_count ?? 0)
+              : items.filter((i) => i.category === t).length;
+        return (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`relative z-1 flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              tab === t
+                ? "text-on-surface"
+                : "text-on-surface-muted hover:text-on-surface"
+            }`}
+          >
+            {TAB_LABELS[t]} {count > 0 && `(${count})`}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const [bag, setBag] = useState<BagView | null>(null);
   const [loading, setLoading] = useState(false);
   const [selling, setSelling] = useState(false);
   const [tab, setTab] = useState<string>("all");
+  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
+  const prevTabRef = useRef(tab);
   const { toast } = useToast();
+
+  const handleSetTab = useCallback((newTab: string) => {
+    const oldIdx = TABS.indexOf(prevTabRef.current as typeof TABS[number]);
+    const newIdx = TABS.indexOf(newTab as typeof TABS[number]);
+    setSlideDir(newIdx > oldIdx ? "left" : "right");
+    prevTabRef.current = newTab;
+    setTab(newTab);
+  }, []);
 
   const fetchBag = useCallback(async () => {
     setLoading(true);
@@ -131,30 +201,9 @@ export default function InventoryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border pb-px">
-        {TABS.map((t) => {
-          const count =
-            t === "all"
-              ? items.length
-              : t === "other"
-                ? (bag?.other_count ?? 0)
-                : items.filter((i) => i.category === t).length;
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-                tab === t
-                  ? "bg-surface text-on-surface border-b-2 border-primary-500"
-                  : "text-on-surface-muted hover:text-on-surface"
-              }`}
-            >
-              {TAB_LABELS[t]} {count > 0 && `(${count})`}
-            </button>
-          );
-        })}
-      </div>
+      <TabBar tabs={TABS} tab={tab} setTab={handleSetTab} items={items} bag={bag} />
 
+      <div key={tab} className={slideDir === "left" ? "animate-slide-left" : "animate-slide-right"}>
       {filtered.length === 0 && !loading ? (
         <EmptyState
           icon={<Package className="size-10" />}
@@ -196,6 +245,7 @@ export default function InventoryPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
