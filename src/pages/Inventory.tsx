@@ -42,6 +42,14 @@ export default function InventoryPage() {
   );
   useTauriEvent("data-changed", handleDataChanged);
 
+  const handleStatusChanged = useCallback(
+    (payload: { connection: string }) => {
+      if (payload.connection === "LoggedIn") fetchBag();
+    },
+    [fetchBag]
+  );
+  useTauriEvent("status-changed", handleStatusChanged);
+
   const handleSellAll = async () => {
     setSelling(true);
     try {

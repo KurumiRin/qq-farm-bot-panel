@@ -34,8 +34,7 @@ export function Card({
         <div
           className={clsx(
             "flex items-center justify-between",
-            collapsible && "cursor-pointer select-none",
-            !collapsed && "mb-4"
+            collapsible && "cursor-pointer select-none"
           )}
           onClick={collapsible ? () => setCollapsed((v) => !v) : undefined}
         >
@@ -60,10 +59,12 @@ export function Card({
             collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
           )}
         >
-          <div className="overflow-hidden">{children}</div>
+          <div className="overflow-hidden">
+            <div className="pt-4">{children}</div>
+          </div>
         </div>
       ) : (
-        children
+        (title || action) ? <div className="pt-4">{children}</div> : children
       )}
     </div>
   );

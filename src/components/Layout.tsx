@@ -138,7 +138,7 @@ export default function Layout() {
         <div className={DRAG_CLASS} onMouseDown={startDrag} />
         <div className="h-11 shrink-0" />
 
-        <main className="flex-1 overflow-y-auto px-6 pb-6">
+        <main className="flex-1 overflow-y-auto px-6 py-6">
           <Outlet />
         </main>
       </div>

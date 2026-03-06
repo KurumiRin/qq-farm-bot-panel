@@ -42,6 +42,14 @@ export default function FriendsPage() {
   );
   useTauriEvent("data-changed", handleDataChanged);
 
+  const handleStatusChanged = useCallback(
+    (payload: { connection: string }) => {
+      if (payload.connection === "LoggedIn") fetchFriends();
+    },
+    [fetchFriends]
+  );
+  useTauriEvent("status-changed", handleStatusChanged);
+
   return (
     <div className="space-y-6">
       <div>

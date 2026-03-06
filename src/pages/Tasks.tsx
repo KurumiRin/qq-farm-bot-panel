@@ -45,6 +45,14 @@ export default function TasksPage() {
   );
   useTauriEvent("data-changed", handleDataChanged);
 
+  const handleStatusChanged = useCallback(
+    (payload: { connection: string }) => {
+      if (payload.connection === "LoggedIn") fetchTasks();
+    },
+    [fetchTasks]
+  );
+  useTauriEvent("status-changed", handleStatusChanged);
+
   const handleClaimAll = async () => {
     setClaiming(true);
     try {
