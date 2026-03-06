@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ToastProvider } from "./components/Toast";
 import Layout from "./components/Layout";
 import LoginPage from "./pages/Login";
 import DashboardPage from "./pages/Dashboard";
@@ -11,6 +12,7 @@ import LogsPage from "./pages/Logs";
 
 export default function App() {
   return (
+    <ToastProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -25,5 +27,6 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }

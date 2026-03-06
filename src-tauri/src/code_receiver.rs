@@ -30,8 +30,14 @@ pub fn start(
 
         loop {
             let (stream, addr) = match listener.accept().await {
-                Ok(v) => v,
-                Err(_) => continue,
+                Ok(v) => {
+                    log::info!("[CodeReceiver] Accepted connection from {}", v.1);
+                    v
+                }
+                Err(e) => {
+                    log::error!("[CodeReceiver] Accept error: {}", e);
+                    continue;
+                }
             };
 
             let network = Arc::clone(&network);
@@ -40,6 +46,7 @@ pub fn start(
             let last_code = Arc::clone(&last_code);
 
             tauri::async_runtime::spawn(async move {
+                log::info!("[CodeReceiver] Handling request from {}", addr);
                 let (reader, mut writer) = stream.into_split();
                 let mut buf_reader = BufReader::new(reader);
                 let mut headers = String::new();
@@ -99,10 +106,13 @@ pub fn start(
                     );
 
                     // Disconnect existing connection if any
+                    log::info!("[CodeReceiver] Disconnecting old connection...");
                     if let Some(old_engine) = engine.lock().await.take() {
                         old_engine.stop();
                     }
                     network.disconnect().await;
+                    app_state.reset();
+                    log::info!("[CodeReceiver] Old connection cleaned up, connecting with new code...");
 
                     // Connect with new code
                     match do_connect(&network, &app_state, &engine, &code).await {

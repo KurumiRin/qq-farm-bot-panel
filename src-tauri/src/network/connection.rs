@@ -142,6 +142,11 @@ impl NetworkManager {
         let reply = userpb::LoginReply::decode(reply_bytes.as_slice())?;
 
         if let Some(basic) = &reply.basic {
+            log::info!(
+                "Login reply basic: name={} lv={} gid={} gold={} exp={}",
+                basic.name, basic.level, basic.gid, basic.gold, basic.exp
+            );
+
             self.state.update_user_from_login(
                 basic.gid,
                 basic.name.clone(),
@@ -156,11 +161,6 @@ impl NetworkManager {
             }
 
             self.state.set_connection_status(ConnectionStatus::LoggedIn);
-
-            log::info!(
-                "Login success: {} (Lv{}) GID={} Gold={}",
-                basic.name, basic.level, basic.gid, basic.gold
-            );
         }
 
         Ok(())
@@ -391,42 +391,51 @@ impl NetworkManager {
             }
         } else if msg_type.contains("ItemNotify") {
             if let Ok(notify) = crate::proto::itempb::ItemNotify::decode(event.body.as_slice()) {
+                let mut changed = false;
                 for item_chg in &notify.items {
                     if let Some(item) = &item_chg.item {
                         let id = item.id;
                         let count = item.count;
                         let delta = item_chg.delta;
+                        log::debug!("[ItemNotify] id={} count={} delta={}", id, count, delta);
                         let mut user = self.state.user.write();
                         match id {
                             item_ids::EXP_ITEM => {
-                                if count > 0 { user.exp = count; }
-                                else if delta != 0 { user.exp = (user.exp + delta).max(0); }
+                                if count > 0 { user.exp = count; changed = true; }
+                                else if delta != 0 { user.exp = (user.exp + delta).max(0); changed = true; }
                             }
                             item_ids::GOLD | item_ids::GOLD_ALT => {
-                                if count > 0 { user.gold = count; }
-                                else if delta != 0 { user.gold = (user.gold + delta).max(0); }
+                                if count > 0 { user.gold = count; changed = true; }
+                                else if delta != 0 { user.gold = (user.gold + delta).max(0); changed = true; }
                             }
                             item_ids::COUPON => {
-                                if count > 0 { user.coupon = count; }
-                                else if delta != 0 { user.coupon = (user.coupon + delta).max(0); }
+                                if count > 0 { user.coupon = count; changed = true; }
+                                else if delta != 0 { user.coupon = (user.coupon + delta).max(0); changed = true; }
                             }
                             _ => {}
                         }
                     }
                 }
+                if changed {
+                    self.state.emit_status();
+                }
             }
         } else if msg_type.contains("BasicNotify") {
             if let Ok(notify) = userpb::BasicNotify::decode(event.body.as_slice()) {
                 if let Some(basic) = &notify.basic {
-                    let mut user = self.state.user.write();
-                    if basic.level > 0 { user.level = basic.level; }
-                    if basic.gold >= 0 { user.gold = basic.gold; }
-                    if basic.exp >= 0 { user.exp = basic.exp; }
-                    let _ = self.event_tx.send(NetworkEvent::BasicNotify {
-                        level: user.level,
-                        gold: user.gold,
-                        exp: user.exp,
-                    });
+                    log::debug!("[BasicNotify] level={} gold={} exp={}", basic.level, basic.gold, basic.exp);
+                    {
+                        let mut user = self.state.user.write();
+                        if basic.level > 0 { user.level = basic.level; }
+                        if basic.gold > 0 { user.gold = basic.gold; }
+                        if basic.exp > 0 { user.exp = basic.exp; }
+                        let _ = self.event_tx.send(NetworkEvent::BasicNotify {
+                            level: user.level,
+                            gold: user.gold,
+                            exp: user.exp,
+                        });
+                    }
+                    self.state.emit_status();
                 }
             }
         } else if msg_type.contains("FriendApplicationReceived") {

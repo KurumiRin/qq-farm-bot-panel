@@ -133,6 +133,12 @@ pub async fn disconnect(state: State<'_, TauriState>) -> Result<(), String> {
         engine.stop();
     }
 
+    // Clear user state and stats so the frontend reflects disconnected state
+    state.app_state.reset();
+    state.app_state.emit_status();
+
+    state.app_state.push_log("info", "已断开连接，Code 接收服务仍在运行 (端口 7788)");
+
     Ok(())
 }
 
@@ -401,67 +407,138 @@ pub async fn remove_dead_plants(
     Ok(())
 }
 
-/// Auto plant empty lands: check bag, buy seeds if needed, then plant
+/// Plant seeds one land at a time (server requires individual planting)
+async fn plant_one_by_one(
+    engine: &AutomationEngine,
+    seed_id: i64,
+    land_ids: &[i64],
+) -> Result<i64, String> {
+    let mut success = 0i64;
+    for &land_id in land_ids {
+        let items = vec![crate::proto::plantpb::PlantItem {
+            seed_id,
+            land_ids: vec![land_id],
+            auto_slave: false,
+        }];
+        match engine.farm().plant(items).await {
+            Ok(_) => success += 1,
+            Err(e) => log::warn!("Plant land#{} failed: {}", land_id, e),
+        }
+        if land_ids.len() > 1 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+    if success == 0 {
+        return Err("所有土地种植失败".to_string());
+    }
+    Ok(success)
+}
+
+/// Auto plant empty lands: sell fruits, query shop for best seed, buy if needed, then plant
 #[tauri::command]
 pub async fn auto_plant_empty(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<String, String> {
     let engine = get_engine(&state).await?;
-
-    let config = state.app_state.automation_config.read().clone();
-    let seed_id = config.preferred_seed_id.ok_or("未配置种植种子，请在设置中选择")?;
     let need = land_ids.len() as i64;
+    let preferred = state.app_state.automation_config.read().preferred_seed_id;
 
-    // Check bag for existing seeds
-    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
-    let have = bag
-        .item_bag
-        .as_ref()
-        .and_then(|b| b.items.iter().find(|i| i.id == seed_id))
-        .map(|i| i.count)
-        .unwrap_or(0);
-
-    let mut msg = String::new();
-
-    if have < need {
-        let to_buy = need - have;
-        // Query seed shop (shop_id=2) to find goods_id and price for this seed
-        let shop = engine.shop().get_shop_info(2).await.map_err(|e| e.to_string())?;
-        let goods = shop
-            .goods_list
-            .iter()
-            .find(|g| g.item_id == seed_id)
-            .ok_or(format!("商店中未找到种子 {}", seed_id))?;
-
-        let total_cost = goods.price * to_buy;
-        let gold = state.app_state.user.read().gold;
-        if total_cost > gold {
-            return Err(format!(
-                "金币不足: 需要 {} 金币购买 {} 个种子，当前 {} 金币",
-                total_cost, to_buy, gold
-            ));
-        }
-
-        engine
-            .shop()
-            .buy_goods(goods.id, to_buy, goods.price)
-            .await
-            .map_err(|e| e.to_string())?;
-        msg = format!("购买种子 x{}，花费 {} 金币。", to_buy, total_cost);
+    // Step 1: Sell fruits first to maximize available gold
+    if let Err(e) = engine.warehouse().auto_sell_fruits().await {
+        log::warn!("Auto sell before planting failed: {}", e);
+    } else {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 
-    // Plant
-    let items = vec![crate::proto::plantpb::PlantItem {
-        seed_id,
-        land_ids,
-        auto_slave: false,
-    }];
-    engine.farm().plant(items).await.map_err(|e| e.to_string())?;
-    msg.push_str(&format!("已种植 {} 块地", need));
+    // Step 2: Check bag for existing seeds
+    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
+    let bag_items = bag.item_bag.as_ref().map(|b| &b.items[..]).unwrap_or(&[]);
 
-    state.app_state.push_log("info", &msg);
-    Ok(msg)
+    // Step 3: Query seed shop (shop_id=2) for real-time seed data
+    let shop = engine.shop().get_shop_info(2).await.map_err(|e| e.to_string())?;
+    let mut unlocked_seeds: Vec<_> = shop.goods_list.iter()
+        .filter(|g| g.unlocked)
+        .collect();
+    // Sort by price descending so we try the most expensive (highest level) first
+    unlocked_seeds.sort_by(|a, b| b.price.cmp(&a.price));
+
+    // Try preferred seed from bag first
+    if let Some(pref_id) = preferred {
+        if bag_items.iter().any(|i| i.id == pref_id && i.count >= need) {
+            let ok = plant_one_by_one(&engine, pref_id, &land_ids).await?;
+            let msg = format!("已种植 (背包已有) x{}", ok);
+            state.app_state.push_log("info", &msg);
+            return Ok(msg);
+        }
+    }
+
+    // Try any seed from bag (highest price first = best seed)
+    for goods in &unlocked_seeds {
+        if bag_items.iter().any(|i| i.id == goods.item_id && i.count >= need) {
+            let ok = plant_one_by_one(&engine, goods.item_id, &land_ids).await?;
+            let msg = format!("已种植 (背包已有) x{}", ok);
+            state.app_state.push_log("info", &msg);
+            return Ok(msg);
+        }
+    }
+
+    // Step 4: Need to buy - find best affordable seed
+    let gold = state.app_state.user.read().gold;
+
+    // Helper: buy seed and plant
+    let buy_and_plant = |goods_id: i64, seed_id: i64, to_buy: i64, price: i64| {
+        let engine = Arc::clone(&engine);
+        let land_ids = land_ids.clone();
+        async move {
+            log::info!("Buying goods_id={} num={} price={}", goods_id, to_buy, price);
+            let buy_reply = engine.shop().buy_goods(goods_id, to_buy, price).await
+                .map_err(|e| format!("购买失败: {}", e))?;
+            // Use actual seed ID from buy reply if available
+            let actual_seed_id = buy_reply.get_items.first()
+                .map(|item| item.id)
+                .filter(|&id| id > 0)
+                .unwrap_or(seed_id);
+            log::info!("Bought seed_id={}, planting on {} lands", actual_seed_id, land_ids.len());
+            let ok = plant_one_by_one(&engine, actual_seed_id, &land_ids).await?;
+            Ok::<(i64, i64), String>((ok, price * to_buy))
+        }
+    };
+
+    // If preferred seed is set, try it first
+    if let Some(pref_id) = preferred {
+        if let Some(goods) = unlocked_seeds.iter().find(|g| g.item_id == pref_id) {
+            let have = bag_items.iter().find(|i| i.id == pref_id).map(|i| i.count).unwrap_or(0);
+            let to_buy = (need - have).max(0);
+            if to_buy > 0 && goods.price * to_buy <= gold {
+                let (ok, cost) = buy_and_plant(goods.id, pref_id, to_buy, goods.price).await?;
+                let msg = format!("购买种子 x{}，花费 {} 金币。已种植 x{}", to_buy, cost, ok);
+                state.app_state.push_log("info", &msg);
+                return Ok(msg);
+            }
+        }
+    }
+
+    // Try highest-price unlocked seed that we can afford (descending by price)
+    for goods in &unlocked_seeds {
+        let have = bag_items.iter().find(|i| i.id == goods.item_id).map(|i| i.count).unwrap_or(0);
+        let to_buy = (need - have).max(0);
+        if to_buy == 0 || goods.price * to_buy <= gold {
+            if to_buy > 0 {
+                let (ok, cost) = buy_and_plant(goods.id, goods.item_id, to_buy, goods.price).await?;
+                let msg = format!("购买种子 x{}，花费 {} 金币。已种植 x{}", to_buy, cost, ok);
+                state.app_state.push_log("info", &msg);
+                return Ok(msg);
+            }
+            // Have enough in bag already
+            let ok = plant_one_by_one(&engine, goods.item_id, &land_ids).await?;
+            let msg = format!("已种植 (背包已有) x{}", ok);
+            state.app_state.push_log("info", &msg);
+            return Ok(msg);
+        }
+    }
+
+    Err(format!("金币不足，无法购买任何种子 (当前 {} 金币)", gold))
 }
 
 /// Manually plant seeds

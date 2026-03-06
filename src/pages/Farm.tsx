@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Sprout, Scissors, Droplets, Bug, Leaf, Lock, Trash2, RefreshCw, Shovel } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
@@ -96,9 +97,21 @@ function LandCard({ land }: { land: LandView }) {
           <span className="rounded px-1 py-0.5 font-semibold bg-red-500/20 text-red-600">枯</span>
         )}
         <div className="flex gap-0.5 ml-auto">
-          {land.need_water && <Droplets className="size-2.5 text-blue-500" />}
-          {land.need_weed && <Leaf className="size-2.5 text-emerald-500" />}
-          {land.need_insect && <Bug className="size-2.5 text-red-500" />}
+          {land.need_water && (
+            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-blue-500/15 text-blue-600 dark:text-blue-400">
+              <Droplets className="size-2" /><span className="text-[8px] font-medium">旱</span>
+            </span>
+          )}
+          {land.need_weed && (
+            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <Leaf className="size-2" /><span className="text-[8px] font-medium">草</span>
+            </span>
+          )}
+          {land.need_insect && (
+            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-red-500/15 text-red-600 dark:text-red-400">
+              <Bug className="size-2" /><span className="text-[8px] font-medium">虫</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -126,20 +139,24 @@ function LandCard({ land }: { land: LandView }) {
         </div>
       </div>
 
-      {/* Row 3: progress bar (only when growing) */}
-      {isGrowing && land.total_grow_sec > 0 && (
-        <div className="flex items-center gap-1">
-          <div className="flex-1 h-1 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ${soil?.bar ?? "bg-primary-500"}`}
-              style={{ width: `${(progress * 100).toFixed(1)}%` }}
-            />
-          </div>
-          {land.mature_in_sec > 0 && (
-            <span className="text-[9px] text-on-surface-muted tabular-nums shrink-0">{formatTime(land.mature_in_sec)}</span>
-          )}
-        </div>
-      )}
+      {/* Row 3: progress bar (always rendered for consistent height) */}
+      <div className="flex items-center gap-1 h-3">
+        {isGrowing && land.total_grow_sec > 0 ? (
+          <>
+            <div className="flex-1 h-1 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-1000 ${soil?.bar ?? "bg-primary-500"}`}
+                style={{ width: `${(progress * 100).toFixed(1)}%` }}
+              />
+            </div>
+            {land.mature_in_sec > 0 && (
+              <span className="text-[9px] text-on-surface-muted tabular-nums shrink-0">{formatTime(land.mature_in_sec)}</span>
+            )}
+          </>
+        ) : isMature ? (
+          <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">可收获</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -150,6 +167,7 @@ export default function FarmPage() {
   const [farm, setFarm] = useState<FarmView | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const { toast } = useToast();
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchLands = useCallback(async () => {
@@ -209,13 +227,15 @@ export default function FarmPage() {
   );
   useTauriEvent("status-changed", handleStatusChanged);
 
-  const runAction = async (key: string, fn: () => Promise<unknown>) => {
+  const runAction = async (key: string, fn: () => Promise<unknown>, successMsg?: string) => {
     setBusy(key);
     try {
-      await fn();
+      const result = await fn();
       await fetchLands();
-    } catch (e) {
-      console.error(`${key} failed:`, e);
+      toast("success", typeof result === "string" ? result : successMsg ?? "操作成功");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast("error", msg);
     } finally {
       setBusy(null);
     }
@@ -256,7 +276,7 @@ export default function FarmPage() {
             <Button
               size="sm"
               icon={<Scissors className="size-3.5" />}
-              onClick={() => runAction("harvest", () => api.harvest(matureIds))}
+              onClick={() => runAction("harvest", () => api.harvest(matureIds), `收获 ${matureIds.length} 块地`)}
               loading={busy === "harvest"}
               disabled={!!busy}
             >
@@ -268,7 +288,7 @@ export default function FarmPage() {
               size="sm"
               variant="ghost"
               icon={<Droplets className="size-3.5 text-blue-500" />}
-              onClick={() => runAction("water", () => api.waterLands(waterIds))}
+              onClick={() => runAction("water", () => api.waterLands(waterIds), `浇水 ${waterIds.length} 块地`)}
               loading={busy === "water"}
               disabled={!!busy}
             >
@@ -280,7 +300,7 @@ export default function FarmPage() {
               size="sm"
               variant="ghost"
               icon={<Leaf className="size-3.5 text-emerald-500" />}
-              onClick={() => runAction("weed", () => api.weedOutLands(weedIds))}
+              onClick={() => runAction("weed", () => api.weedOutLands(weedIds), `除草 ${weedIds.length} 块地`)}
               loading={busy === "weed"}
               disabled={!!busy}
             >
@@ -292,7 +312,7 @@ export default function FarmPage() {
               size="sm"
               variant="ghost"
               icon={<Bug className="size-3.5 text-red-500" />}
-              onClick={() => runAction("insect", () => api.insecticideLands(insectIds))}
+              onClick={() => runAction("insect", () => api.insecticideLands(insectIds), `除虫 ${insectIds.length} 块地`)}
               loading={busy === "insect"}
               disabled={!!busy}
             >
@@ -304,7 +324,7 @@ export default function FarmPage() {
               size="sm"
               variant="ghost"
               icon={<Trash2 className="size-3.5 text-on-surface-muted" />}
-              onClick={() => runAction("remove", () => api.removeDeadPlants(deadIds))}
+              onClick={() => runAction("remove", () => api.removeDeadPlants(deadIds), `铲除 ${deadIds.length} 块地`)}
               loading={busy === "remove"}
               disabled={!!busy}
             >

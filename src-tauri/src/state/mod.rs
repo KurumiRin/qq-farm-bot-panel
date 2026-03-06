@@ -182,9 +182,12 @@ impl AppState {
         let mut user = self.user.write();
         user.gid = gid;
         user.name = name;
-        user.level = level;
-        user.gold = gold;
-        user.exp = exp;
+        if level > 0 { user.level = level; }
+        // Gold/exp may arrive via ItemNotify before this runs (race between
+        // read_loop and send_login tasks). Only set if non-zero to avoid
+        // overwriting the more accurate ItemNotify value.
+        if gold > 0 { user.gold = gold; }
+        if exp > 0 { user.exp = exp; }
         user.avatar_url = avatar_url;
         drop(user);
         self.emit_status();
@@ -206,6 +209,13 @@ impl AppState {
     pub fn set_connection_status(&self, status: ConnectionStatus) {
         *self.connection_status.write() = status;
         self.emit_status();
+    }
+
+    /// Reset user state and stats (called on disconnect)
+    pub fn reset(&self) {
+        *self.user.write() = UserState::default();
+        *self.stats.write() = Stats::default();
+        *self.login_code.write() = None;
     }
 
     pub fn is_logged_in(&self) -> bool {
