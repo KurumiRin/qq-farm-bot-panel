@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Save } from "lucide-react";
+import { Save, RotateCw } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { SEEDS } from "../data/seeds";
@@ -106,7 +106,7 @@ const FERTILIZER_OPTIONS: { value: FertilizerStrategy; label: string }[] = [
 const defaultConfig: AutomationConfig = {
   planting_strategy: "preferred",
   preferred_seed_id: null,
-  intervals: { farm_min: 2, farm_max: 2, friend_min: 10, friend_max: 10 },
+  intervals: { farm_min: 30, farm_max: 60, friend_min: 120, friend_max: 300 },
   friend_quiet_hours: { enabled: false, start: "23:00", end: "07:00" },
 
   auto_harvest: true,
@@ -242,119 +242,100 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-5">
-        {/* ===== 种植策略 ===== */}
-        <Card title="种植策略" collapsible>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-on-surface-muted mb-1 block">
-                  播种策略
-                </label>
-                <select
-                  value={config.planting_strategy}
-                  onChange={(e) =>
-                    set("planting_strategy", e.target.value as PlantingStrategy)
-                  }
-                  className={selectClass}
-                >
-                  {STRATEGY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {config.planting_strategy === "preferred" ? (
-                <div>
-                  <label className="text-xs text-on-surface-muted mb-1 block">
-                    优先种植种子
-                  </label>
-                  <select
-                    value={config.preferred_seed_id ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      set("preferred_seed_id", v ? parseInt(v, 10) : null);
-                    }}
-                    className={selectClass}
-                  >
-                    <option value="">自动选择</option>
-                    {SEEDS.map((seed) => (
-                      <option key={seed.id} value={seed.id}>
-                        {seed.level}级 {seed.name} ({seed.price}金)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="text-xs text-on-surface-muted mb-1 block">
-                    策略选种预览
-                  </label>
-                  <div className={`${inputClass} flex items-center text-on-surface-muted`}>
-                    由系统自动选择
+        {/* ===== 巡查节奏 ===== */}
+        <Card title="巡查节奏" collapsible>
+          <p className="text-xs text-on-surface-muted mb-3">
+            每次巡查完成后随机等待最小~最大秒数，避免固定间隔被检测
+          </p>
+          <div className="space-y-4">
+            <div>
+              <p className="text-[13px] font-medium mb-2">农场巡查</p>
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    ["farm_min", "最小间隔"],
+                    ["farm_max", "最大间隔"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-xs text-on-surface-muted mb-1 block">
+                      {label}
+                      <span className="opacity-50"> (秒)</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={config.intervals[key]}
+                      onChange={(e) =>
+                        setInterval(
+                          key,
+                          Math.max(1, Math.min(86400, parseInt(e.target.value) || 1))
+                        )
+                      }
+                      min={1}
+                      max={86400}
+                      className={`${inputClass} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+                    />
                   </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
-              {(
-                [
-                  ["farm_min", "农场最小"],
-                  ["farm_max", "农场最大"],
-                  ["friend_min", "好友最小"],
-                  ["friend_max", "好友最大"],
-                ] as const
-              ).map(([key, label]) => (
-                <div key={key}>
-                  <label className="text-xs text-on-surface-muted mb-1 block">
-                    {label}
-                    <span className="opacity-50"> (秒)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={config.intervals[key]}
-                    onChange={(e) =>
-                      setInterval(
-                        key,
-                        Math.max(1, Math.min(86400, parseInt(e.target.value) || 1))
-                      )
-                    }
-                    min={1}
-                    max={86400}
-                    className={`${inputClass} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="border-t border-border pt-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
+            <div className="border-t border-border pt-4">
+              <p className="text-[13px] font-medium mb-2">好友巡查</p>
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    ["friend_min", "最小间隔"],
+                    ["friend_max", "最大间隔"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-xs text-on-surface-muted mb-1 block">
+                      {label}
+                      <span className="opacity-50"> (秒)</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={config.intervals[key]}
+                      onChange={(e) =>
+                        setInterval(
+                          key,
+                          Math.max(1, Math.min(86400, parseInt(e.target.value) || 1))
+                        )
+                      }
+                      min={1}
+                      max={86400}
+                      className={`${inputClass} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="flex items-center justify-between gap-4">
                   <ToggleRow
-                    label="启用静默时段"
+                    label="好友静默时段"
+                    description="静默期间不巡查好友农场"
                     checked={config.friend_quiet_hours.enabled}
                     onChange={(v) => setQuietHours("enabled", v)}
                   />
+                  {config.friend_quiet_hours.enabled && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="time"
+                        value={config.friend_quiet_hours.start}
+                        onChange={(e) => setQuietHours("start", e.target.value)}
+                        className={`${inputClass} w-28`}
+                      />
+                      <span className="text-on-surface-muted text-xs">至</span>
+                      <input
+                        type="time"
+                        value={config.friend_quiet_hours.end}
+                        onChange={(e) => setQuietHours("end", e.target.value)}
+                        className={`${inputClass} w-28`}
+                      />
+                    </div>
+                  )}
                 </div>
-                {config.friend_quiet_hours.enabled && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <input
-                      type="time"
-                      value={config.friend_quiet_hours.start}
-                      onChange={(e) => setQuietHours("start", e.target.value)}
-                      className={`${inputClass} w-28`}
-                    />
-                    <span className="text-on-surface-muted text-xs">至</span>
-                    <input
-                      type="time"
-                      value={config.friend_quiet_hours.end}
-                      onChange={(e) => setQuietHours("end", e.target.value)}
-                      className={`${inputClass} w-28`}
-                    />
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -414,6 +395,96 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </div>
+        </Card>
+
+        {/* ===== 社交 ===== */}
+        <Card title="社交" collapsible>
+          <div className="divide-y divide-border">
+            <ToggleRow
+              label="自动偷菜"
+              description="自动偷取好友农场的成熟作物"
+              checked={config.auto_steal}
+              onChange={() => toggle("auto_steal")}
+            />
+            <div>
+              <ToggleRow
+                label="自动帮忙"
+                description="帮好友浇水、除草、除虫"
+                checked={config.auto_help_water}
+                onChange={() => toggle("auto_help_water")}
+              />
+              {config.auto_help_water && (
+                <div className="flex flex-wrap gap-1.5 pb-2.5">
+                  <InlineToggle label="浇水" checked={config.auto_help_water} onChange={() => toggle("auto_help_water")} />
+                  <InlineToggle label="除草" checked={config.auto_help_weed} onChange={() => toggle("auto_help_weed")} />
+                  <InlineToggle label="除虫" checked={config.auto_help_insecticide} onChange={() => toggle("auto_help_insecticide")} />
+                  <InlineToggle label="经验上限停止" checked={config.auto_friend_help_exp_limit} onChange={() => toggle("auto_friend_help_exp_limit")} />
+                </div>
+              )}
+            </div>
+            <ToggleRow
+              label="自动捣乱"
+              description="给好友农场放虫、放草"
+              checked={config.auto_friend_bad}
+              onChange={() => toggle("auto_friend_bad")}
+            />
+          </div>
+        </Card>
+
+        {/* ===== 种植策略 ===== */}
+        <Card title="种植策略" collapsible>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-on-surface-muted mb-1 block">
+                播种策略
+              </label>
+              <select
+                value={config.planting_strategy}
+                onChange={(e) =>
+                  set("planting_strategy", e.target.value as PlantingStrategy)
+                }
+                className={selectClass}
+              >
+                {STRATEGY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {config.planting_strategy === "preferred" ? (
+              <div>
+                <label className="text-xs text-on-surface-muted mb-1 block">
+                  优先种植种子
+                </label>
+                <select
+                  value={config.preferred_seed_id ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    set("preferred_seed_id", v ? parseInt(v, 10) : null);
+                  }}
+                  className={selectClass}
+                >
+                  <option value="">自动选择</option>
+                  {SEEDS.map((seed) => (
+                    <option key={seed.id} value={seed.id}>
+                      {seed.level}级 {seed.name} ({seed.price}金)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-on-surface-muted mb-1 block">
+                  策略选种预览
+                </label>
+                <div className={`${inputClass} flex items-center text-on-surface-muted`}>
+                  由系统自动选择
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -477,38 +548,29 @@ export default function SettingsPage() {
             />
           </div>
         </Card>
-
-        {/* ===== 社交 ===== */}
-        <Card title="社交" collapsible>
-          <div className="divide-y divide-border">
-            <ToggleRow
-              label="自动偷菜"
-              description="自动偷取好友农场的成熟作物"
-              checked={config.auto_steal}
-              onChange={() => toggle("auto_steal")}
-            />
+        {/* ===== 系统 ===== */}
+        <Card title="系统" collapsible>
+          <div className="flex items-center justify-between py-2.5">
             <div>
-              <ToggleRow
-                label="自动帮忙"
-                description="帮好友浇水、除草、除虫"
-                checked={config.auto_help_water}
-                onChange={() => toggle("auto_help_water")}
-              />
-              {config.auto_help_water && (
-                <div className="flex flex-wrap gap-1.5 pb-2.5">
-                  <InlineToggle label="浇水" checked={config.auto_help_water} onChange={() => toggle("auto_help_water")} />
-                  <InlineToggle label="除草" checked={config.auto_help_weed} onChange={() => toggle("auto_help_weed")} />
-                  <InlineToggle label="除虫" checked={config.auto_help_insecticide} onChange={() => toggle("auto_help_insecticide")} />
-                  <InlineToggle label="经验上限停止" checked={config.auto_friend_help_exp_limit} onChange={() => toggle("auto_friend_help_exp_limit")} />
-                </div>
-              )}
+              <p className="text-[13px] font-medium leading-tight">Code 接收服务</p>
+              <p className="text-xs text-on-surface-muted leading-tight mt-0.5">
+                端口 7788，用于接收登录 code。端口被占用时可重启
+              </p>
             </div>
-            <ToggleRow
-              label="自动捣乱"
-              description="给好友农场放虫、放草"
-              checked={config.auto_friend_bad}
-              onChange={() => toggle("auto_friend_bad")}
-            />
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<RotateCw className="size-3.5" />}
+              onClick={async () => {
+                try {
+                  await api.restartCodeReceiver();
+                } catch (e) {
+                  console.error("Failed to restart code receiver:", e);
+                }
+              }}
+            >
+              重启
+            </Button>
           </div>
         </Card>
       </div>
