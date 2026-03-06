@@ -19,14 +19,16 @@ impl FriendService {
         Self { network, state }
     }
 
-    /// Get all friends list
-    pub async fn get_all_friends(&self) -> AppResult<friendpb::GetAllReply> {
-        let req = friendpb::GetAllRequest {};
+    /// Get all friends list (uses SyncAll for QQ platform)
+    pub async fn get_all_friends(&self) -> AppResult<friendpb::SyncAllReply> {
+        let req = friendpb::SyncAllRequest {
+            open_ids: Vec::new(),
+        };
         let reply_bytes = self
             .network
-            .send_request(&codec::GET_ALL_FRIENDS, req.encode_to_vec())
+            .send_request(&codec::SYNC_ALL_FRIENDS, req.encode_to_vec())
             .await?;
-        Ok(friendpb::GetAllReply::decode(reply_bytes.as_slice())?)
+        Ok(friendpb::SyncAllReply::decode(reply_bytes.as_slice())?)
     }
 
     /// Sync friends with specific open_ids
