@@ -7,7 +7,7 @@ use crate::auth::{MiniProgramLoginSession, QrLoginSession};
 use crate::config::AutomationConfig;
 use crate::network::NetworkManager;
 use crate::services::automation::AutomationEngine;
-use crate::state::{AppState, ConnectionStatus, Stats, UserState};
+use crate::state::{AppState, ConnectionStatus, LogEntry, Stats, UserState};
 
 // ========== State types for Tauri ==========
 
@@ -166,6 +166,17 @@ pub async fn set_automation_config(
 ) -> Result<(), String> {
     *state.app_state.automation_config.write() = config;
     Ok(())
+}
+
+// ========== Log Commands ==========
+
+/// Get logs (optionally filtered by timestamp)
+#[tauri::command]
+pub async fn get_logs(
+    since: Option<i64>,
+    state: State<'_, TauriState>,
+) -> Result<Vec<LogEntry>, String> {
+    Ok(state.app_state.get_logs(since))
 }
 
 // ========== Farm Commands ==========

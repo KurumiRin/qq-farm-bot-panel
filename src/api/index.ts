@@ -6,6 +6,7 @@ import type {
   UserState,
   StatusResponse,
   AutomationConfig,
+  LogEntry,
 } from "../types";
 
 // Auth
@@ -58,3 +59,7 @@ export const claimAllTasks = () => invoke<void>("claim_all_tasks");
 // Shop
 export const getShopInfo = (shopId: number) =>
   invoke<unknown>("get_shop_info", { shopId });
+
+// Logs
+export const getLogs = (since?: number) =>
+  invoke<LogEntry[]>("get_logs", { since: since ?? null });

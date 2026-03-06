@@ -1,9 +1,31 @@
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 
 use crate::config::AutomationConfig;
+
+const MAX_LOG_ENTRIES: usize = 500;
+
+/// Global app handle for emitting events from anywhere
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+
+pub fn set_app_handle(handle: AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+fn emit<S: Serialize + Clone>(event: &str, payload: S) {
+    if let Some(handle) = APP_HANDLE.get() {
+        let _ = handle.emit(event, payload);
+    }
+}
+
+/// Notify frontend that data pages should refresh
+pub fn emit_data_changed(scope: &str) {
+    emit("data-changed", scope.to_string());
+}
 
 /// Per-user state after login
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +105,14 @@ pub struct Stats {
     pub emails_claimed: u64,
 }
 
+/// Log entry for the frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub timestamp: i64,
+    pub level: String,
+    pub message: String,
+}
+
 /// Connection status
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionStatus {
@@ -95,6 +125,14 @@ pub enum ConnectionStatus {
     Error(String),
 }
 
+/// Status snapshot sent to frontend via events
+#[derive(Clone, Serialize)]
+pub struct StatusPayload {
+    pub user: UserState,
+    pub connection: ConnectionStatus,
+    pub stats: Stats,
+}
+
 /// Global application state shared across all components
 #[derive(Debug)]
 pub struct AppState {
@@ -104,6 +142,7 @@ pub struct AppState {
     pub connection_status: RwLock<ConnectionStatus>,
     pub automation_config: RwLock<AutomationConfig>,
     pub login_code: RwLock<Option<String>>,
+    pub logs: RwLock<VecDeque<LogEntry>>,
 }
 
 impl AppState {
@@ -115,7 +154,20 @@ impl AppState {
             connection_status: RwLock::new(ConnectionStatus::Disconnected),
             automation_config: RwLock::new(AutomationConfig::default()),
             login_code: RwLock::new(None),
+            logs: RwLock::new(VecDeque::new()),
         })
+    }
+
+    /// Emit current status snapshot to frontend
+    pub fn emit_status(&self) {
+        emit(
+            "status-changed",
+            StatusPayload {
+                user: self.user.read().clone(),
+                connection: self.connection_status.read().clone(),
+                stats: self.stats.read().clone(),
+            },
+        );
     }
 
     pub fn update_user_from_login(
@@ -134,6 +186,8 @@ impl AppState {
         user.gold = gold;
         user.exp = exp;
         user.avatar_url = avatar_url;
+        drop(user);
+        self.emit_status();
     }
 
     pub fn sync_server_time(&self, server_time_ms: i64) {
@@ -146,10 +200,12 @@ impl AppState {
 
     pub fn record_stat(&self, f: impl FnOnce(&mut Stats)) {
         f(&mut self.stats.write());
+        self.emit_status();
     }
 
     pub fn set_connection_status(&self, status: ConnectionStatus) {
         *self.connection_status.write() = status;
+        self.emit_status();
     }
 
     pub fn is_logged_in(&self) -> bool {
@@ -158,6 +214,28 @@ impl AppState {
 
     pub fn user_gid(&self) -> i64 {
         self.user.read().gid
+    }
+
+    pub fn push_log(&self, level: &str, message: impl Into<String>) {
+        let entry = LogEntry {
+            timestamp: now_ms(),
+            level: level.to_string(),
+            message: message.into(),
+        };
+        emit("log-added", entry.clone());
+        let mut logs = self.logs.write();
+        if logs.len() >= MAX_LOG_ENTRIES {
+            logs.pop_front();
+        }
+        logs.push_back(entry);
+    }
+
+    pub fn get_logs(&self, since: Option<i64>) -> Vec<LogEntry> {
+        let logs = self.logs.read();
+        match since {
+            Some(ts) => logs.iter().filter(|l| l.timestamp > ts).cloned().collect(),
+            None => logs.iter().cloned().collect(),
+        }
     }
 }
 

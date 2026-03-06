@@ -5,7 +5,7 @@ use tokio::sync::watch;
 
 use crate::config;
 use crate::network::NetworkManager;
-use crate::state::AppState;
+use crate::state::{self, AppState};
 
 use super::email::EmailService;
 use super::farm::FarmService;
@@ -83,6 +83,7 @@ impl AutomationEngine {
     /// Start all automation loops
     pub async fn start(self: Arc<Self>) {
         log::info!("Starting automation engine");
+        self.state.push_log("info", "自动化引擎已启动");
 
         // Farm check loop
         let engine = Arc::clone(&self);
@@ -94,9 +95,15 @@ impl AutomationEngine {
                 tokio::select! {
                     _ = interval.tick() => {
                         if !engine.state.is_logged_in() { continue; }
-                        if let Err(e) = engine.farm.auto_check_farm().await {
-                            log::warn!("Farm check error: {}", e);
+                        engine.state.push_log("info", "开始巡田检查");
+                        match engine.farm.auto_check_farm().await {
+                            Ok(_) => engine.state.push_log("info", "巡田检查完成"),
+                            Err(e) => {
+                                log::warn!("Farm check error: {}", e);
+                                engine.state.push_log("error", format!("巡田出错: {}", e));
+                            }
                         }
+                        state::emit_data_changed("farm");
                     }
                     _ = stop_rx.changed() => break,
                 }
@@ -113,9 +120,15 @@ impl AutomationEngine {
                 tokio::select! {
                     _ = interval.tick() => {
                         if !engine.state.is_logged_in() { continue; }
-                        if let Err(e) = engine.friend.auto_check_friends().await {
-                            log::warn!("Friend check error: {}", e);
+                        engine.state.push_log("info", "开始好友巡查");
+                        match engine.friend.auto_check_friends().await {
+                            Ok(_) => engine.state.push_log("info", "好友巡查完成"),
+                            Err(e) => {
+                                log::warn!("Friend check error: {}", e);
+                                engine.state.push_log("error", format!("好友巡查出错: {}", e));
+                            }
                         }
+                        state::emit_data_changed("friends");
                     }
                     _ = stop_rx.changed() => break,
                 }
@@ -134,22 +147,36 @@ impl AutomationEngine {
                         let config = engine.state.automation_config.read().clone();
 
                         if config.auto_claim_tasks {
-                            if let Err(e) = engine.task.auto_claim_all().await {
-                                log::warn!("Task claim error: {}", e);
+                            match engine.task.auto_claim_all().await {
+                                Ok(_) => engine.state.push_log("info", "自动领取任务完成"),
+                                Err(e) => {
+                                    log::warn!("Task claim error: {}", e);
+                                    engine.state.push_log("error", format!("领取任务出错: {}", e));
+                                }
                             }
                         }
 
                         if config.auto_claim_emails {
-                            if let Err(e) = engine.email.auto_claim_all().await {
-                                log::warn!("Email claim error: {}", e);
+                            match engine.email.auto_claim_all().await {
+                                Ok(_) => engine.state.push_log("info", "自动领取邮件完成"),
+                                Err(e) => {
+                                    log::warn!("Email claim error: {}", e);
+                                    engine.state.push_log("error", format!("领取邮件出错: {}", e));
+                                }
                             }
                         }
 
                         if config.auto_sell {
-                            if let Err(e) = engine.warehouse.auto_sell_fruits().await {
-                                log::warn!("Auto sell error: {}", e);
+                            match engine.warehouse.auto_sell_fruits().await {
+                                Ok(_) => engine.state.push_log("info", "自动出售果实完成"),
+                                Err(e) => {
+                                    log::warn!("Auto sell error: {}", e);
+                                    engine.state.push_log("error", format!("自动出售出错: {}", e));
+                                }
                             }
                         }
+                        state::emit_data_changed("tasks");
+                        state::emit_data_changed("inventory");
                     }
                     _ = stop_rx.changed() => break,
                 }
@@ -166,16 +193,28 @@ impl AutomationEngine {
                     _ = interval.tick() => {
                         if !engine.state.is_logged_in() { continue; }
 
-                        if let Err(e) = engine.vip.auto_claim_dailies().await {
-                            log::warn!("Daily reward claim error: {}", e);
+                        match engine.vip.auto_claim_dailies().await {
+                            Ok(_) => engine.state.push_log("info", "领取每日奖励完成"),
+                            Err(e) => {
+                                log::warn!("Daily reward claim error: {}", e);
+                                engine.state.push_log("error", format!("领取每日奖励出错: {}", e));
+                            }
                         }
 
-                        if let Err(e) = engine.mall.auto_claim_month_card().await {
-                            log::warn!("Month card claim error: {}", e);
+                        match engine.mall.auto_claim_month_card().await {
+                            Ok(_) => engine.state.push_log("info", "领取月卡奖励完成"),
+                            Err(e) => {
+                                log::warn!("Month card claim error: {}", e);
+                                engine.state.push_log("error", format!("领取月卡出错: {}", e));
+                            }
                         }
 
-                        if let Err(e) = engine.mall.auto_claim_free_gifts().await {
-                            log::warn!("Free gift claim error: {}", e);
+                        match engine.mall.auto_claim_free_gifts().await {
+                            Ok(_) => engine.state.push_log("info", "领取免费礼包完成"),
+                            Err(e) => {
+                                log::warn!("Free gift claim error: {}", e);
+                                engine.state.push_log("error", format!("领取免费礼包出错: {}", e));
+                            }
                         }
                     }
                     _ = stop_rx.changed() => break,

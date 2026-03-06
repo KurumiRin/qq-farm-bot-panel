@@ -7,6 +7,7 @@ import FriendsPage from "./pages/Friends";
 import InventoryPage from "./pages/Inventory";
 import TasksPage from "./pages/Tasks";
 import SettingsPage from "./pages/Settings";
+import LogsPage from "./pages/Logs";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/logs" element={<LogsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
