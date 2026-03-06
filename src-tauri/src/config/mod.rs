@@ -5,8 +5,9 @@ pub const CLIENT_VERSION: &str = "1.6.0.14_20251224";
 pub const PLATFORM: &str = "qq";
 pub const OS: &str = "iOS";
 pub const HEARTBEAT_INTERVAL_MS: u64 = 25_000;
-pub const FARM_CHECK_INTERVAL_MS: u64 = 2_000;
-pub const FRIEND_CHECK_INTERVAL_MS: u64 = 10_000;
+// These are only fallbacks; runtime reads from AutomationConfig.intervals
+pub const FARM_CHECK_INTERVAL_MS: u64 = 30_000;
+pub const FRIEND_CHECK_INTERVAL_MS: u64 = 120_000;
 pub const REQUEST_TIMEOUT_MS: u64 = 10_000;
 pub const RECONNECT_DELAY_MS: u64 = 5_000;
 pub const HEARTBEAT_MISS_THRESHOLD_MS: u64 = 60_000;
@@ -111,10 +112,10 @@ pub struct IntervalConfig {
 impl Default for IntervalConfig {
     fn default() -> Self {
         Self {
-            farm_min: 2,
-            farm_max: 2,
-            friend_min: 10,
-            friend_max: 10,
+            farm_min: 30,
+            farm_max: 60,
+            friend_min: 120,
+            friend_max: 300,
         }
     }
 }
