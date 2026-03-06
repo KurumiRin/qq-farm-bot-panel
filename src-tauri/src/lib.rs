@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod auth;
+mod code_receiver;
 mod commands;
 mod config;
 mod error;
@@ -28,6 +29,13 @@ pub fn run() {
         engine: Arc::new(tokio::sync::Mutex::new(None)),
     };
 
+    // Start HTTP code receiver on port 7788 (uses tauri::async_runtime)
+    code_receiver::start(
+        Arc::clone(&tauri_state.network),
+        Arc::clone(&tauri_state.app_state),
+        Arc::clone(&tauri_state.engine),
+    );
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(tauri_state)
@@ -46,6 +54,11 @@ pub fn run() {
             commands::set_automation_config,
             commands::get_all_lands,
             commands::harvest,
+            commands::water_lands,
+            commands::weed_out_lands,
+            commands::insecticide_lands,
+            commands::remove_dead_plants,
+            commands::auto_plant_empty,
             commands::plant_seeds,
             commands::get_friends,
             commands::get_bag,
@@ -54,6 +67,7 @@ pub fn run() {
             commands::claim_all_tasks,
             commands::get_shop_info,
             commands::get_logs,
+            commands::restart_code_receiver,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -33,4 +33,5 @@ dashmap = "6"
 base64 = "0.22"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 urlencoding = "2"
+rand = "0.9"
 

@@ -40,6 +40,21 @@ export const getAllLands = () => invoke<unknown>("get_all_lands");
 export const harvest = (landIds: number[]) =>
   invoke<unknown>("harvest", { landIds });
 
+export const waterLands = (landIds: number[]) =>
+  invoke<void>("water_lands", { landIds });
+
+export const weedOutLands = (landIds: number[]) =>
+  invoke<void>("weed_out_lands", { landIds });
+
+export const insecticideLands = (landIds: number[]) =>
+  invoke<void>("insecticide_lands", { landIds });
+
+export const removeDeadPlants = (landIds: number[]) =>
+  invoke<void>("remove_dead_plants", { landIds });
+
+export const autoPlantEmpty = (landIds: number[]) =>
+  invoke<string>("auto_plant_empty", { landIds });
+
 export const plantSeeds = (seedId: number, landIds: number[]) =>
   invoke<unknown>("plant_seeds", { seedId, landIds });
 
@@ -63,3 +78,7 @@ export const getShopInfo = (shopId: number) =>
 // Logs
 export const getLogs = (since?: number) =>
   invoke<LogEntry[]>("get_logs", { since: since ?? null });
+
+// System
+export const restartCodeReceiver = () =>
+  invoke<void>("restart_code_receiver");

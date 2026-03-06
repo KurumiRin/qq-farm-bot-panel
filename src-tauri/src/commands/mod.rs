@@ -124,13 +124,14 @@ pub async fn connect_and_login(
 /// Disconnect from game server
 #[tauri::command]
 pub async fn disconnect(state: State<'_, TauriState>) -> Result<(), String> {
-    // Stop automation
+    // Disconnect WebSocket first — this makes any in-flight requests fail,
+    // which unblocks the engine lock if another command is holding it.
+    state.network.disconnect().await;
+
+    // Now stop automation (lock should be available since requests have failed)
     if let Some(engine) = state.engine.lock().await.take() {
         engine.stop();
     }
-
-    // Disconnect WebSocket
-    state.network.disconnect().await;
 
     Ok(())
 }
@@ -179,15 +180,66 @@ pub async fn get_logs(
     Ok(state.app_state.get_logs(since))
 }
 
+// ========== Code Receiver Commands ==========
+
+/// Restart the code receiver HTTP server (e.g. after port conflict)
+#[tauri::command]
+pub async fn restart_code_receiver(state: State<'_, TauriState>) -> Result<(), String> {
+    crate::code_receiver::start(
+        Arc::clone(&state.network),
+        Arc::clone(&state.app_state),
+        Arc::clone(&state.engine),
+    );
+    Ok(())
+}
+
 // ========== Farm Commands ==========
 
-/// Get all lands info
+#[derive(Serialize)]
+pub struct LandView {
+    pub id: i64,
+    pub unlocked: bool,
+    pub level: i64,
+    pub max_level: i64,
+    pub status: String, // "locked" | "empty" | "growing" | "mature" | "dead"
+    pub seed_id: i64,
+    pub seed_name: String,
+    pub phase: i32,
+    pub phase_name: String,
+    pub mature_in_sec: i64,
+    pub total_grow_sec: i64,
+    pub fruit_num: i64,
+    pub need_water: bool,
+    pub need_weed: bool,
+    pub need_insect: bool,
+}
+
+#[derive(Serialize)]
+pub struct FarmView {
+    pub lands: Vec<LandView>,
+    pub summary: FarmSummary,
+}
+
+#[derive(Serialize)]
+pub struct FarmSummary {
+    pub total: usize,
+    pub unlocked: usize,
+    pub mature: usize,
+    pub growing: usize,
+    pub empty: usize,
+    pub dead: usize,
+    pub need_water: usize,
+    pub need_weed: usize,
+    pub need_insect: usize,
+}
+
+/// Get all lands info (processed for UI)
 #[tauri::command]
-pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
+pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, String> {
+    use crate::config::PlantPhase;
+
     let engine_lock = state.engine.lock().await;
-    let engine = engine_lock
-        .as_ref()
-        .ok_or("Not connected")?;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
 
     let reply = engine
         .farm()
@@ -195,7 +247,81 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<serde_json::V
         .await
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(&reply).map_err(|e| e.to_string())
+    let now = chrono::Utc::now().timestamp();
+    let mut lands = Vec::new();
+    let mut summary = FarmSummary {
+        total: reply.lands.len(),
+        unlocked: 0, mature: 0, growing: 0, empty: 0, dead: 0,
+        need_water: 0, need_weed: 0, need_insect: 0,
+    };
+
+    for land in &reply.lands {
+        if !land.unlocked {
+            lands.push(LandView {
+                id: land.id, unlocked: false, level: land.level, max_level: land.max_level,
+                status: "locked".into(), seed_id: 0, seed_name: String::new(),
+                phase: 0, phase_name: "未开垦".into(), mature_in_sec: 0, total_grow_sec: 0,
+                fruit_num: 0, need_water: false, need_weed: false, need_insect: false,
+            });
+            continue;
+        }
+
+        summary.unlocked += 1;
+
+        if let Some(plant) = &land.plant {
+            // Find the current phase: last phase whose begin_time <= now
+            // (Server sends all future phases too, so phases.last() may be "mature" that hasn't started yet)
+            let current_phase_info = plant.phases.iter().rev()
+                .find(|p| p.begin_time > 0 && p.begin_time <= now)
+                .or_else(|| plant.phases.first());
+            let current_phase = current_phase_info
+                .map(|p| PlantPhase::from_i32(p.phase))
+                .unwrap_or(PlantPhase::Unknown);
+            let phase_val = current_phase_info.map(|p| p.phase).unwrap_or(0);
+
+            let need_water = plant.dry_num > 0;
+            let need_weed = !plant.weed_owners.is_empty();
+            let need_insect = !plant.insect_owners.is_empty();
+
+            if need_water { summary.need_water += 1; }
+            if need_weed { summary.need_weed += 1; }
+            if need_insect { summary.need_insect += 1; }
+
+            // Calculate time until mature
+            let mature_in_sec = if plant.grow_sec > 0 && !matches!(current_phase, PlantPhase::Mature | PlantPhase::Dead) {
+                let plant_start = plant.phases.first().map(|p| p.begin_time).unwrap_or(now);
+                let mature_at = plant_start + plant.grow_sec;
+                (mature_at - now).max(0)
+            } else {
+                0
+            };
+
+            let status = match current_phase {
+                PlantPhase::Mature => { summary.mature += 1; "mature" }
+                PlantPhase::Dead => { summary.dead += 1; "dead" }
+                _ => { summary.growing += 1; "growing" }
+            };
+
+            lands.push(LandView {
+                id: land.id, unlocked: true, level: land.level, max_level: land.max_level,
+                status: status.into(), seed_id: plant.id - 1_000_000, seed_name: plant.name.clone(),
+                phase: phase_val, phase_name: current_phase.name().into(),
+                mature_in_sec, total_grow_sec: plant.grow_sec,
+                fruit_num: plant.fruit_num,
+                need_water, need_weed, need_insect,
+            });
+        } else {
+            summary.empty += 1;
+            lands.push(LandView {
+                id: land.id, unlocked: true, level: land.level, max_level: land.max_level,
+                status: "empty".into(), seed_id: 0, seed_name: String::new(),
+                phase: 0, phase_name: "空地".into(), mature_in_sec: 0, total_grow_sec: 0,
+                fruit_num: 0, need_water: false, need_weed: false, need_insect: false,
+            });
+        }
+    }
+
+    Ok(FarmView { lands, summary })
 }
 
 /// Manually harvest specific lands
@@ -214,6 +340,121 @@ pub async fn harvest(
         .map_err(|e| e.to_string())?;
 
     serde_json::to_value(&reply).map_err(|e| e.to_string())
+}
+
+/// Manually water lands
+#[tauri::command]
+pub async fn water_lands(
+    land_ids: Vec<i64>,
+    state: State<'_, TauriState>,
+) -> Result<(), String> {
+    let engine_lock = state.engine.lock().await;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let gid = state.app_state.user.read().gid;
+    engine.farm().water(land_ids, gid).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Manually remove weeds
+#[tauri::command]
+pub async fn weed_out_lands(
+    land_ids: Vec<i64>,
+    state: State<'_, TauriState>,
+) -> Result<(), String> {
+    let engine_lock = state.engine.lock().await;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let gid = state.app_state.user.read().gid;
+    engine.farm().weed_out(land_ids, gid).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Manually remove insects
+#[tauri::command]
+pub async fn insecticide_lands(
+    land_ids: Vec<i64>,
+    state: State<'_, TauriState>,
+) -> Result<(), String> {
+    let engine_lock = state.engine.lock().await;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let gid = state.app_state.user.read().gid;
+    engine.farm().insecticide(land_ids, gid).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Manually remove dead plants
+#[tauri::command]
+pub async fn remove_dead_plants(
+    land_ids: Vec<i64>,
+    state: State<'_, TauriState>,
+) -> Result<(), String> {
+    let engine_lock = state.engine.lock().await;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    engine.farm().remove_plant(land_ids).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Auto plant empty lands: check bag, buy seeds if needed, then plant
+#[tauri::command]
+pub async fn auto_plant_empty(
+    land_ids: Vec<i64>,
+    state: State<'_, TauriState>,
+) -> Result<String, String> {
+    let engine_lock = state.engine.lock().await;
+    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+
+    let config = state.app_state.automation_config.read().clone();
+    let seed_id = config.preferred_seed_id.ok_or("未配置种植种子，请在设置中选择")?;
+    let need = land_ids.len() as i64;
+
+    // Check bag for existing seeds
+    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
+    let have = bag
+        .item_bag
+        .as_ref()
+        .and_then(|b| b.items.iter().find(|i| i.id == seed_id))
+        .map(|i| i.count)
+        .unwrap_or(0);
+
+    let mut msg = String::new();
+
+    if have < need {
+        let to_buy = need - have;
+        // Query seed shop (shop_id=2) to find goods_id and price for this seed
+        let shop = engine.shop().get_shop_info(2).await.map_err(|e| e.to_string())?;
+        let goods = shop
+            .goods_list
+            .iter()
+            .find(|g| g.item_id == seed_id)
+            .ok_or(format!("商店中未找到种子 {}", seed_id))?;
+
+        let total_cost = goods.price * to_buy;
+        let gold = state.app_state.user.read().gold;
+        if total_cost > gold {
+            return Err(format!(
+                "金币不足: 需要 {} 金币购买 {} 个种子，当前 {} 金币",
+                total_cost, to_buy, gold
+            ));
+        }
+
+        engine
+            .shop()
+            .buy_goods(goods.id, to_buy, goods.price)
+            .await
+            .map_err(|e| e.to_string())?;
+        msg = format!("购买种子 x{}，花费 {} 金币。", to_buy, total_cost);
+    }
+
+    // Plant
+    let items = vec![crate::proto::plantpb::PlantItem {
+        seed_id,
+        land_ids,
+        auto_slave: false,
+    }];
+    engine.farm().plant(items).await.map_err(|e| e.to_string())?;
+    msg.push_str(&format!("已种植 {} 块地", need));
+
+    state.app_state.push_log("info", &msg);
+    Ok(msg)
 }
 
 /// Manually plant seeds

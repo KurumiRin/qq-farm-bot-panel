@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rand::Rng;
 use tokio::sync::watch;
 
-use crate::config;
 use crate::network::NetworkManager;
 use crate::state::{self, AppState};
 
@@ -11,6 +11,7 @@ use super::email::EmailService;
 use super::farm::FarmService;
 use super::friend::FriendService;
 use super::mall::MallService;
+use super::shop::ShopService;
 use super::task::TaskService;
 use super::vip::VipService;
 use super::warehouse::WarehouseService;
@@ -23,6 +24,7 @@ pub struct AutomationEngine {
     task: TaskService,
     email: EmailService,
     mall: MallService,
+    shop: ShopService,
     vip: VipService,
     state: Arc<AppState>,
     stop_tx: watch::Sender<bool>,
@@ -39,6 +41,7 @@ impl AutomationEngine {
             task: TaskService::new(Arc::clone(&network), Arc::clone(&state)),
             email: EmailService::new(Arc::clone(&network), Arc::clone(&state)),
             mall: MallService::new(Arc::clone(&network)),
+            shop: ShopService::new(Arc::clone(&network)),
             vip: VipService::new(Arc::clone(&network)),
             state,
             stop_tx,
@@ -76,6 +79,10 @@ impl AutomationEngine {
         &self.mall
     }
 
+    pub fn shop(&self) -> &ShopService {
+        &self.shop
+    }
+
     pub fn vip(&self) -> &VipService {
         &self.vip
     }
@@ -85,15 +92,16 @@ impl AutomationEngine {
         log::info!("Starting automation engine");
         self.state.push_log("info", "自动化引擎已启动");
 
-        // Farm check loop
+        // Farm check loop (randomized interval from config)
         let engine = Arc::clone(&self);
         let mut stop_rx = self.stop_rx.clone();
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(Duration::from_millis(config::FARM_CHECK_INTERVAL_MS));
             loop {
+                let intervals = engine.state.automation_config.read().intervals.clone();
+                let delay = random_interval_secs(intervals.farm_min, intervals.farm_max);
+                engine.state.push_log("info", format!("下次巡田: {}秒后", delay));
                 tokio::select! {
-                    _ = interval.tick() => {
+                    _ = tokio::time::sleep(Duration::from_secs(delay)) => {
                         if !engine.state.is_logged_in() { continue; }
                         engine.state.push_log("info", "开始巡田检查");
                         match engine.farm.auto_check_farm().await {
@@ -110,15 +118,16 @@ impl AutomationEngine {
             }
         });
 
-        // Friend check loop
+        // Friend check loop (randomized interval from config)
         let engine = Arc::clone(&self);
         let mut stop_rx = self.stop_rx.clone();
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(Duration::from_millis(config::FRIEND_CHECK_INTERVAL_MS));
             loop {
+                let intervals = engine.state.automation_config.read().intervals.clone();
+                let delay = random_interval_secs(intervals.friend_min, intervals.friend_max);
+                engine.state.push_log("info", format!("下次好友巡查: {}秒后", delay));
                 tokio::select! {
-                    _ = interval.tick() => {
+                    _ = tokio::time::sleep(Duration::from_secs(delay)) => {
                         if !engine.state.is_logged_in() { continue; }
                         engine.state.push_log("info", "开始好友巡查");
                         match engine.friend.auto_check_friends().await {
@@ -222,4 +231,15 @@ impl AutomationEngine {
             }
         });
     }
+}
+
+/// Returns a random duration in seconds between min and max (inclusive).
+/// Ensures min <= max and at least 1 second.
+fn random_interval_secs(min: u64, max: u64) -> u64 {
+    let min = min.max(1);
+    let max = max.max(min);
+    if min == max {
+        return min;
+    }
+    rand::rng().random_range(min..=max)
 }
