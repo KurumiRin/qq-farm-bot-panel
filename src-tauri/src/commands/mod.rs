@@ -193,6 +193,20 @@ pub async fn restart_code_receiver(state: State<'_, TauriState>) -> Result<(), S
     Ok(())
 }
 
+// ========== Helpers ==========
+
+/// Clone the engine Arc and immediately release the mutex lock.
+/// This prevents holding the lock across network await points.
+async fn get_engine(state: &State<'_, TauriState>) -> Result<Arc<AutomationEngine>, String> {
+    state
+        .engine
+        .lock()
+        .await
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "Not connected".to_string())
+}
+
 // ========== Farm Commands ==========
 
 #[derive(Serialize)]
@@ -238,8 +252,7 @@ pub struct FarmSummary {
 pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, String> {
     use crate::config::PlantPhase;
 
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .farm()
@@ -330,8 +343,7 @@ pub async fn harvest(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .farm()
@@ -348,8 +360,7 @@ pub async fn water_lands(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
     let gid = state.app_state.user.read().gid;
     engine.farm().water(land_ids, gid).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -361,8 +372,7 @@ pub async fn weed_out_lands(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
     let gid = state.app_state.user.read().gid;
     engine.farm().weed_out(land_ids, gid).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -374,8 +384,7 @@ pub async fn insecticide_lands(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
     let gid = state.app_state.user.read().gid;
     engine.farm().insecticide(land_ids, gid).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -387,8 +396,7 @@ pub async fn remove_dead_plants(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
     engine.farm().remove_plant(land_ids).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -399,8 +407,7 @@ pub async fn auto_plant_empty(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<String, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let config = state.app_state.automation_config.read().clone();
     let seed_id = config.preferred_seed_id.ok_or("未配置种植种子，请在设置中选择")?;
@@ -464,8 +471,7 @@ pub async fn plant_seeds(
     land_ids: Vec<i64>,
     state: State<'_, TauriState>,
 ) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let items = vec![crate::proto::plantpb::PlantItem {
         seed_id,
@@ -487,8 +493,7 @@ pub async fn plant_seeds(
 /// Get friends list
 #[tauri::command]
 pub async fn get_friends(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .friend()
@@ -504,8 +509,7 @@ pub async fn get_friends(state: State<'_, TauriState>) -> Result<serde_json::Val
 /// Get backpack contents
 #[tauri::command]
 pub async fn get_bag(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .warehouse()
@@ -519,8 +523,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<serde_json::Value, 
 /// Manually sell all fruits
 #[tauri::command]
 pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     engine
         .warehouse()
@@ -534,8 +537,7 @@ pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<(), String>
 /// Get task info
 #[tauri::command]
 pub async fn get_tasks(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .task()
@@ -549,8 +551,7 @@ pub async fn get_tasks(state: State<'_, TauriState>) -> Result<serde_json::Value
 /// Manually claim all tasks
 #[tauri::command]
 pub async fn claim_all_tasks(state: State<'_, TauriState>) -> Result<(), String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     engine
         .task()
@@ -567,8 +568,7 @@ pub async fn get_shop_info(
     shop_id: i64,
     state: State<'_, TauriState>,
 ) -> Result<serde_json::Value, String> {
-    let engine_lock = state.engine.lock().await;
-    let engine = engine_lock.as_ref().ok_or("Not connected")?;
+    let engine = get_engine(&state).await?;
 
     let reply = engine
         .mall()
