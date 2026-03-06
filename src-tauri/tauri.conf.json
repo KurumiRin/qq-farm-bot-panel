@@ -12,9 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "qq-farm-pilot",
-        "width": 800,
-        "height": 600
+        "title": "Farm Pilot",
+        "width": 960,
+        "height": 680,
+        "minWidth": 760,
+        "minHeight": 480,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

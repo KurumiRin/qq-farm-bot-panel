@@ -31,7 +31,39 @@
   }
 
   body {
-    @apply bg-surface-dim text-on-surface min-h-screen;
+    @apply bg-surface-dim text-on-surface min-h-screen select-none;
+  }
+
+  input, textarea, [contenteditable] {
+    @apply select-text;
+  }
+
+  button, a, select, [role="switch"], [role="button"] {
+    cursor: pointer;
+  }
+
+  /* 细滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-on-surface-muted);
   }
 
   @media (prefers-color-scheme: dark) {
