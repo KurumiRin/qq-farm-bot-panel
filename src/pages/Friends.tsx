@@ -271,7 +271,7 @@ export default function FriendsPage() {
               <div
                 key={friend.gid}
                 className="animate-list-item flex items-center gap-3 rounded-lg border border-border bg-surface p-2.5"
-                style={{ animationDelay: `${Math.min(i * 20, 300)}ms` }}
+                style={{ animationDelay: `${Math.min(i * 15, 200)}ms` }}
               >
                 {/* Avatar */}
                 <div className="size-9 rounded-full bg-surface-bright flex items-center justify-center shrink-0 overflow-hidden">

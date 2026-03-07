@@ -405,8 +405,10 @@ export default function FarmPage() {
         />
       ) : (
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-          {lands.map((land) => (
-            <LandCard key={land.id} land={land} />
+          {lands.map((land, i) => (
+            <div key={land.id} className="animate-list-item" style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}>
+              <LandCard land={land} />
+            </div>
           ))}
         </div>
       )}

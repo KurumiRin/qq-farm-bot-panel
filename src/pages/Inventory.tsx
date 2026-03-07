@@ -224,7 +224,7 @@ export default function InventoryPage() {
               <div
                 key={`${item.id}-${idx}`}
                 className="animate-list-item rounded-lg border border-border bg-surface p-2 flex flex-col items-center gap-1"
-                style={{ animationDelay: `${Math.min(idx * 15, 300)}ms` }}
+                style={{ animationDelay: `${Math.min(idx * 10, 200)}ms` }}
               >
                 <div className="size-10 flex items-center justify-center">
                   {seedId > 0 ? (
