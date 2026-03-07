@@ -200,8 +200,8 @@ impl FarmService {
     // ========== Automation helpers ==========
 
     /// Check own farm and perform automated actions
-    /// Returns list of empty land IDs that need planting (caller handles smart planting)
-    pub async fn auto_check_farm(&self) -> AppResult<Vec<i64>> {
+    /// Returns (dead_land_ids, empty_land_ids) that need planting
+    pub async fn auto_check_farm(&self) -> AppResult<(Vec<i64>, Vec<i64>)> {
         let config = self.state.automation_config.read().clone();
         let reply = self.get_all_lands().await?;
 
@@ -209,7 +209,10 @@ impl FarmService {
         let mut dry_ids = Vec::new();
         let mut weed_ids = Vec::new();
         let mut insect_ids = Vec::new();
+        let mut dead_ids = Vec::new();
         let mut empty_ids = Vec::new();
+
+        let now = self.state.server_now_sec();
 
         for land in &reply.lands {
             if !land.unlocked {
@@ -217,18 +220,20 @@ impl FarmService {
             }
 
             if let Some(plant) = &land.plant {
-                // Check current phase from the last phase info
+                // Find the phase that is currently active based on server time
                 let current_phase = plant
                     .phases
-                    .last()
+                    .iter()
+                    .rev()
+                    .find(|p| p.begin_time > 0 && p.begin_time <= now)
+                    .or_else(|| plant.phases.first())
                     .map(|p| PlantPhase::from_i32(p.phase))
                     .unwrap_or(PlantPhase::Unknown);
 
                 match current_phase {
                     PlantPhase::Mature => mature_ids.push(land.id),
-                    PlantPhase::Dead => empty_ids.push(land.id),
+                    PlantPhase::Dead => dead_ids.push(land.id),
                     _ => {
-                        // Check for issues
                         if plant.dry_num > 0 {
                             dry_ids.push(land.id);
                         }
@@ -245,12 +250,48 @@ impl FarmService {
             }
         }
 
-        // Harvest mature crops
+        // Harvest mature crops, then check which lands actually became empty
+        // (2-season crops go back to growing after first harvest)
         if config.auto_harvest && !mature_ids.is_empty() {
             log::info!("Harvesting {} lands", mature_ids.len());
-            let _ = self.harvest(mature_ids.clone(), 0).await;
-            // After harvesting, these lands become empty
-            empty_ids.extend(mature_ids);
+            match self.harvest(mature_ids.clone(), 0).await {
+                Ok(harvest_reply) => {
+                    // Check harvest reply to classify post-harvest land states
+                    for land in &harvest_reply.land {
+                        if let Some(plant) = &land.plant {
+                            let phase = plant
+                                .phases
+                                .iter()
+                                .rev()
+                                .find(|p| p.begin_time > 0 && p.begin_time <= now)
+                                .or_else(|| plant.phases.first())
+                                .map(|p| PlantPhase::from_i32(p.phase))
+                                .unwrap_or(PlantPhase::Unknown);
+                            match phase {
+                                PlantPhase::Dead => dead_ids.push(land.id),
+                                PlantPhase::Mature | PlantPhase::Unknown => {
+                                    // Unknown after harvest = likely empty
+                                    empty_ids.push(land.id);
+                                }
+                                _ => {} // Still growing (2-season crop)
+                            }
+                        } else {
+                            empty_ids.push(land.id);
+                        }
+                    }
+                    // For lands not in harvest reply, assume empty
+                    let replied: std::collections::HashSet<i64> =
+                        harvest_reply.land.iter().map(|l| l.id).collect();
+                    for id in &mature_ids {
+                        if !replied.contains(id) {
+                            empty_ids.push(*id);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Harvest failed: {}", e);
+                }
+            }
         }
 
         // Water dry crops
@@ -271,6 +312,10 @@ impl FarmService {
             let _ = self.insecticide(insect_ids, 0).await;
         }
 
-        Ok(if config.auto_plant { empty_ids } else { Vec::new() })
+        if config.auto_plant {
+            Ok((dead_ids, empty_ids))
+        } else {
+            Ok((Vec::new(), Vec::new()))
+        }
     }
 }

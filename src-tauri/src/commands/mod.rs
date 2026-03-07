@@ -839,6 +839,16 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 
     let raw_items = reply.item_bag.map(|b| b.items).unwrap_or_default();
 
+    // Sync coupon from bag (id=1002) into user state
+    if let Some(coupon_item) = raw_items.iter().find(|i| i.id == 1002 && i.count > 0) {
+        let mut user = state.app_state.user.write();
+        if user.coupon != coupon_item.count {
+            user.coupon = coupon_item.count;
+            drop(user);
+            state.app_state.emit_status();
+        }
+    }
+
     let mut items = Vec::new();
     let mut currencies = Vec::new();
 
