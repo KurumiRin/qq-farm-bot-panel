@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
 import {
   LayoutDashboard,
@@ -11,10 +11,18 @@ import {
   LogOut,
   Circle,
 } from "lucide-react";
-import { useCallback, useRef, useState, useLayoutEffect } from "react";
+import { lazy, Suspense, useCallback, useRef, useState, useLayoutEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatus } from "../hooks/useStatus";
 import * as api from "../api";
+
+const DashboardPage = lazy(() => import("../pages/Dashboard"));
+const FarmPage = lazy(() => import("../pages/Farm"));
+const FriendsPage = lazy(() => import("../pages/Friends"));
+const InventoryPage = lazy(() => import("../pages/Inventory"));
+const TasksPage = lazy(() => import("../pages/Tasks"));
+const SettingsPage = lazy(() => import("../pages/Settings"));
+const LogsPage = lazy(() => import("../pages/Logs"));
 
 const startDrag = (e: React.MouseEvent) => {
   e.preventDefault();
@@ -32,6 +40,16 @@ const navItems = [
   { to: "/settings", icon: Settings, label: "设置" },
   { to: "/logs", icon: ScrollText, label: "日志" },
 ] as const;
+
+const pages: { path: string; component: React.LazyExoticComponent<React.ComponentType> }[] = [
+  { path: "/", component: DashboardPage },
+  { path: "/farm", component: FarmPage },
+  { path: "/friends", component: FriendsPage },
+  { path: "/inventory", component: InventoryPage },
+  { path: "/tasks", component: TasksPage },
+  { path: "/settings", component: SettingsPage },
+  { path: "/logs", component: LogsPage },
+];
 
 function NavList({ items }: { items: typeof navItems }) {
   const location = useLocation();
@@ -83,8 +101,24 @@ function NavList({ items }: { items: typeof navItems }) {
   );
 }
 
-export default function Layout() {
+function KeepAlivePages() {
   const location = useLocation();
+
+  return (
+    <Suspense>
+      {pages.map(({ path, component: Page }) => (
+        <div
+          key={path}
+          className={clsx("h-full", location.pathname !== path && "hidden")}
+        >
+          <Page />
+        </div>
+      ))}
+    </Suspense>
+  );
+}
+
+export default function Layout() {
   const { status } = useStatus();
 
   const isConnected =
@@ -170,9 +204,7 @@ export default function Layout() {
         <div className={DRAG_CLASS} onMouseDown={startDrag} />
 
         <main className="flex-1 overflow-y-auto px-6 pb-6">
-          <div key={location.pathname} className="animate-page-enter">
-            <Outlet />
-          </div>
+          <KeepAlivePages />
         </main>
       </div>
     </div>
