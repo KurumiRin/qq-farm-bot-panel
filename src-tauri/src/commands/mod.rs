@@ -731,7 +731,10 @@ pub struct BagView {
 
 fn categorize_item(id: i64) -> &'static str {
     match id {
-        1 | 1001..=1999 => "currency",
+        // Gold & coupons shown as currency tags
+        1 | 1001 | 1002 => "currency",
+        // Internal counters (fertilizer containers, exp, etc.) — hide completely
+        1003..=1999 => "hidden",
         20000..=29999 => "seed",
         40000..=49999 => "fruit",
         80001..=80099 => "fertilizer",
@@ -757,6 +760,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 
     for item in raw_items.iter().filter(|i| i.count > 0) {
         let cat = categorize_item(item.id);
+        if cat == "hidden" { continue; }
         let name = crate::item_names::get_item_name(item.id)
             .unwrap_or(cat)
             .to_string();

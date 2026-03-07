@@ -181,18 +181,6 @@ export default function InventoryPage() {
               ? `${items.length} 种物品 · ${bag.fruit_count} 果实 · ${bag.seed_count} 种子`
               : "加载中..."}
           </p>
-          {bag && bag.currencies.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {bag.currencies.map((c) => (
-                <span
-                  key={c.id}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
-                >
-                  {c.name} <span className="font-semibold">{c.count.toLocaleString()}</span>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
           <Button
@@ -217,6 +205,19 @@ export default function InventoryPage() {
           )}
         </div>
       </div>
+
+      {bag && bag.currencies.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {bag.currencies.map((c) => (
+            <span
+              key={c.id}
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+            >
+              {c.name} <span className="font-semibold">{c.count.toLocaleString()}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <TabBar tabs={TABS} tab={tab} setTab={handleSetTab} items={items} bag={bag} />
