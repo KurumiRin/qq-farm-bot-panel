@@ -7,6 +7,7 @@ mod config;
 mod error;
 mod item_names;
 mod network;
+mod plant_econ;
 mod proto;
 mod services;
 mod state;

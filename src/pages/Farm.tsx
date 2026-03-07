@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sprout, Scissors, Droplets, Bug, Leaf, Lock, Trash2, RefreshCw, Shovel } from "lucide-react";
+import { Sprout, Scissors, Droplets, Bug, Leaf, Lock, Trash2, RefreshCw, Shovel, Coins, Star } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { useToast } from "../components/Toast";
@@ -24,6 +24,9 @@ interface LandView {
   need_water: boolean;
   need_weed: boolean;
   need_insect: boolean;
+  est_gold: number;
+  est_exp: number;
+  seasons: number;
 }
 
 interface FarmSummary {
@@ -59,6 +62,12 @@ function formatTime(sec: number): string {
   const s = sec % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatNum(n: number): string {
+  if (Math.abs(n) >= 10000) return `${(n / 10000).toFixed(1)}w`;
+  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 function getProgress(land: LandView): number {
@@ -139,7 +148,7 @@ function LandCard({ land }: { land: LandView }) {
         </div>
       </div>
 
-      {/* Row 3: progress bar (always rendered for consistent height) */}
+      {/* Row 3: progress bar */}
       <div className="flex items-center gap-1 h-3">
         {isGrowing && land.total_grow_sec > 0 ? (
           <>
@@ -157,6 +166,27 @@ function LandCard({ land }: { land: LandView }) {
           <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">可收获</span>
         ) : null}
       </div>
+
+      {/* Row 4: earnings estimate */}
+      {!isEmpty && land.seed_id > 0 && (land.est_gold !== 0 || land.est_exp !== 0) && (
+        <div className="flex items-center gap-1.5 text-[9px] text-on-surface-muted/70 leading-none">
+          {land.est_gold !== 0 && (
+            <span className="inline-flex items-center gap-px">
+              <Coins className="size-2.5 text-amber-500/70" />
+              {land.est_gold > 0 ? "+" : ""}{formatNum(land.est_gold)}
+            </span>
+          )}
+          {land.est_exp > 0 && (
+            <span className="inline-flex items-center gap-px">
+              <Star className="size-2.5 text-blue-500/70" />
+              +{formatNum(land.est_exp)}
+            </span>
+          )}
+          {land.seasons >= 2 && (
+            <span className="text-purple-500/70 font-medium">2季</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -251,6 +281,9 @@ export default function FarmPage() {
   const deadIds = lands.filter((l) => l.status === "dead").map((l) => l.id);
   const emptyIds = lands.filter((l) => l.unlocked && l.status === "empty").map((l) => l.id);
 
+  const totalGold = lands.reduce((s, l) => s + (l.status !== "dead" && l.status !== "empty" ? l.est_gold : 0), 0);
+  const totalExp = lands.reduce((s, l) => s + (l.status !== "dead" && l.status !== "empty" ? l.est_exp : 0), 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -258,7 +291,7 @@ export default function FarmPage() {
           <h1 className="text-xl font-bold">我的农场</h1>
           <p className="text-sm text-on-surface-muted mt-0.5">
             {summary
-              ? `${summary.unlocked} 块土地 · ${summary.growing} 生长中 · ${summary.mature} 可收获`
+              ? `${summary.unlocked} 块土地 · ${summary.growing} 生长中 · ${summary.mature} 可收获${totalGold ? ` · 预计 ${formatNum(totalGold)} 金 ${formatNum(totalExp)} 经验` : ""}`
               : "加载中..."}
           </p>
         </div>

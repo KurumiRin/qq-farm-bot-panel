@@ -232,6 +232,10 @@ pub struct LandView {
     pub need_water: bool,
     pub need_weed: bool,
     pub need_insect: bool,
+    // Economics
+    pub est_gold: i64,   // estimated net profit (gold)
+    pub est_exp: i64,    // estimated exp
+    pub seasons: i64,    // 1 or 2 season plant
 }
 
 #[derive(Serialize)]
@@ -281,6 +285,7 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, Str
                 status: "locked".into(), seed_id: 0, seed_name: String::new(),
                 phase: 0, phase_name: "未开垦".into(), mature_in_sec: 0, total_grow_sec: 0,
                 fruit_num: 0, need_water: false, need_weed: false, need_insect: false,
+                est_gold: 0, est_exp: 0, seasons: 0,
             });
             continue;
         }
@@ -321,13 +326,18 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, Str
                 _ => { summary.growing += 1; "growing" }
             };
 
+            let seed_id = plant.id - 1_000_000;
+            let econ = crate::plant_econ::get_plant_econ(seed_id);
             lands.push(LandView {
                 id: land.id, unlocked: true, level: land.level, max_level: land.max_level,
-                status: status.into(), seed_id: plant.id - 1_000_000, seed_name: plant.name.clone(),
+                status: status.into(), seed_id, seed_name: plant.name.clone(),
                 phase: phase_val, phase_name: current_phase.name().into(),
                 mature_in_sec, total_grow_sec: plant.grow_sec,
                 fruit_num: plant.fruit_num,
                 need_water, need_weed, need_insect,
+                est_gold: econ.map(|e| e.net_profit()).unwrap_or(0),
+                est_exp: econ.map(|e| e.total_exp()).unwrap_or(0),
+                seasons: econ.map(|e| e.seasons).unwrap_or(1),
             });
         } else {
             summary.empty += 1;
@@ -336,6 +346,7 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, Str
                 status: "empty".into(), seed_id: 0, seed_name: String::new(),
                 phase: 0, phase_name: "空地".into(), mature_in_sec: 0, total_grow_sec: 0,
                 fruit_num: 0, need_water: false, need_weed: false, need_insect: false,
+                est_gold: 0, est_exp: 0, seasons: 0,
             });
         }
     }
@@ -790,9 +801,78 @@ pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<String, Str
 
 // ========== Task Commands ==========
 
-/// Get task info
+#[derive(Serialize)]
+pub struct TaskView {
+    pub id: i64,
+    pub desc: String,
+    pub progress: i64,
+    pub total_progress: i64,
+    pub is_claimed: bool,
+    pub is_unlocked: bool,
+    pub task_type: i32,
+    pub share_multiple: i64,
+    pub rewards: Vec<RewardView>,
+}
+
+#[derive(Serialize)]
+pub struct RewardView {
+    pub id: i64,
+    pub count: i64,
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct ActiveRewardView {
+    pub point_id: i64,
+    pub need_progress: i64,
+    pub status: i32,
+    pub rewards: Vec<RewardView>,
+}
+
+#[derive(Serialize)]
+pub struct ActiveView {
+    pub active_type: i32,
+    pub progress: i64,
+    pub rewards: Vec<ActiveRewardView>,
+}
+
+#[derive(Serialize)]
+pub struct TasksView {
+    pub growth_tasks: Vec<TaskView>,
+    pub daily_tasks: Vec<TaskView>,
+    pub tasks: Vec<TaskView>,
+    pub actives: Vec<ActiveView>,
+}
+
+fn make_reward_view(items: &[crate::proto::corepb::Item]) -> Vec<RewardView> {
+    items.iter().map(|item| {
+        let name = match item.id {
+            1 | 1001 => "金币",
+            1004 => "钻石",
+            1101 => "经验",
+            _ => crate::item_names::get_item_name(item.id).unwrap_or("未知物品"),
+        };
+        RewardView { id: item.id, count: item.count, name: name.to_string() }
+    }).collect()
+}
+
+fn make_task_view(task: &crate::proto::taskpb::Task) -> TaskView {
+    TaskView {
+        id: task.id,
+        desc: task.desc.clone(),
+        progress: task.progress,
+        total_progress: task.total_progress,
+        is_claimed: task.is_claimed,
+        is_unlocked: task.is_unlocked,
+        task_type: task.task_type,
+        share_multiple: task.share_multiple,
+        rewards: make_reward_view(&task.rewards),
+    }
+}
+
+/// Get task info (structured)
 #[tauri::command]
-pub async fn get_tasks(state: State<'_, TauriState>) -> Result<serde_json::Value, String> {
+pub async fn get_tasks(state: State<'_, TauriState>) -> Result<TasksView, String> {
     let engine = get_engine(&state).await?;
 
     let reply = engine
@@ -801,7 +881,23 @@ pub async fn get_tasks(state: State<'_, TauriState>) -> Result<serde_json::Value
         .await
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(&reply).map_err(|e| e.to_string())
+    let info = reply.task_info.unwrap_or_default();
+
+    Ok(TasksView {
+        growth_tasks: info.growth_tasks.iter().map(make_task_view).collect(),
+        daily_tasks: info.daily_tasks.iter().map(make_task_view).collect(),
+        tasks: info.tasks.iter().map(make_task_view).collect(),
+        actives: info.actives.iter().map(|a| ActiveView {
+            active_type: a.r#type,
+            progress: a.progress,
+            rewards: a.rewards.iter().map(|r| ActiveRewardView {
+                point_id: r.point_id,
+                need_progress: r.need_progress,
+                status: r.status,
+                rewards: make_reward_view(&r.rewards),
+            }).collect(),
+        }).collect(),
+    })
 }
 
 /// Manually claim all tasks
