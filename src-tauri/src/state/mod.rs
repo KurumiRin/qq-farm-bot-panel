@@ -207,13 +207,21 @@ impl AppState {
     }
 
     pub fn set_connection_status(&self, status: ConnectionStatus) {
+        if matches!(status, ConnectionStatus::Disconnected) {
+            self.reset_user();
+        }
         *self.connection_status.write() = status;
         self.emit_status();
     }
 
-    /// Reset user state and stats (called on disconnect)
-    pub fn reset(&self) {
+    /// Reset user state when fully disconnected
+    fn reset_user(&self) {
         *self.user.write() = UserState::default();
+    }
+
+    /// Full reset on manual disconnect (clears stats and login code too)
+    pub fn reset(&self) {
+        self.reset_user();
         *self.stats.write() = Stats::default();
         *self.login_code.write() = None;
     }
@@ -246,6 +254,10 @@ impl AppState {
             Some(ts) => logs.iter().filter(|l| l.timestamp > ts).cloned().collect(),
             None => logs.iter().cloned().collect(),
         }
+    }
+
+    pub fn clear_logs(&self) {
+        self.logs.write().clear();
     }
 }
 
