@@ -225,7 +225,7 @@ impl Default for AutomationConfig {
             auto_land_upgrade: true,
             auto_farm_push: true,
 
-            auto_sell: false,
+            auto_sell: true,
             auto_claim_tasks: true,
             auto_claim_emails: true,
             auto_free_gifts: true,
@@ -240,7 +240,7 @@ impl Default for AutomationConfig {
             auto_help_water: true,
             auto_help_weed: true,
             auto_help_insecticide: true,
-            auto_friend_bad: false,
+            auto_friend_bad: true,
             auto_friend_help_exp_limit: true,
 
             friend_blacklist: Vec::new(),
