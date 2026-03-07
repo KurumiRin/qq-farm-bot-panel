@@ -4,6 +4,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
 import { SEEDS } from "../data/seeds";
+import { useAppStore } from "../store/useAppStore";
 import type {
   AutomationConfig,
   PlantingStrategy,
@@ -142,12 +143,17 @@ const defaultConfig: AutomationConfig = {
 };
 
 function LoginCodeRow() {
+  const connection = useAppStore((s) => s.connection);
   const [code, setCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api.getLoginCode().then(setCode).catch(() => {});
-  }, []);
+    if (connection === "LoggedIn") {
+      api.getLoginCode().then(setCode).catch(() => {});
+    } else if (connection === "Disconnected") {
+      setCode(null);
+    }
+  }, [connection]);
 
   const handleCopy = async () => {
     if (!code) return;

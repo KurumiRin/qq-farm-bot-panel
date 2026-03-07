@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from "react";
 import {
   Sprout,
   Coins,
@@ -15,9 +14,7 @@ import {
 } from "lucide-react";
 import { Card } from "../components/Card";
 import { PageHeader } from "../components/PageHeader";
-import { useStatus } from "../hooks/useStatus";
-import { useTauriEvent } from "../hooks/useTauriEvent";
-import * as api from "../api";
+import { useAppStore } from "../store/useAppStore";
 
 interface StatItemProps {
   icon: React.ReactNode;
@@ -48,11 +45,6 @@ function formatDuration(secs: number): string {
   return `${m}分钟`;
 }
 
-interface FertInfo {
-  normal_fert_secs: number;
-  organic_fert_secs: number;
-}
-
 const infoItems = [
   { key: "gold", label: "金币", color: "bg-yellow-50 text-yellow-600", icon: Coins, format: true },
   { key: "level", label: "等级", color: "bg-blue-50 text-blue-600", icon: TrendingUp, format: false },
@@ -61,35 +53,9 @@ const infoItems = [
 ] as const;
 
 export default function DashboardPage() {
-  const { status } = useStatus();
-  const [fert, setFert] = useState<FertInfo | null>(null);
-  const fetchFert = useCallback(async () => {
-    try {
-      const bag = (await api.getBag()) as FertInfo;
-      setFert({ normal_fert_secs: bag.normal_fert_secs, organic_fert_secs: bag.organic_fert_secs });
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchFert();
-  }, [fetchFert]);
-
-  const handleDataChanged = useCallback(
-    (scope: string) => { if (scope === "inventory") fetchFert(); },
-    [fetchFert]
-  );
-  useTauriEvent("data-changed", handleDataChanged, 2000);
-
-  const handleStatusChanged = useCallback(
-    (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") fetchFert();
-      else if (payload.connection === "Disconnected") setFert(null);
-    },
-    [fetchFert]
-  );
-  useTauriEvent("status-changed", handleStatusChanged);
+  const status = useAppStore((s) => s.status);
+  const connection = useAppStore((s) => s.connection);
+  const bag = useAppStore((s) => s.bag);
 
   if (!status) {
     return (
@@ -99,7 +65,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { user, stats, connection } = status;
+  const { user, stats } = status;
   const isOnline = connection === "LoggedIn";
 
   return (
@@ -109,7 +75,7 @@ export default function DashboardPage() {
         tags={[{ label: isOnline ? `欢迎回来，${user.name}` : "未连接" }]}
       />
 
-      {/* Info cards - 自适应宽度 */}
+      {/* Info cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {infoItems.map(({ key, label, color, icon: Icon, format }) => {
           const val = user[key];
@@ -132,7 +98,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Fertilizer */}
-      {fert && (fert.normal_fert_secs > 0 || fert.organic_fert_secs > 0) && (
+      {bag && (bag.normal_fert_secs > 0 || bag.organic_fert_secs > 0) && (
         <div className="grid grid-cols-2 gap-3">
           <Card className="p-3!">
             <div className="flex items-center gap-2.5">
@@ -141,7 +107,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] text-on-surface-muted">普通化肥</p>
-                <p className="text-sm font-bold truncate">{formatDuration(fert.normal_fert_secs)}</p>
+                <p className="text-sm font-bold truncate">{formatDuration(bag.normal_fert_secs)}</p>
               </div>
             </div>
           </Card>
@@ -152,7 +118,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] text-on-surface-muted">有机化肥</p>
-                <p className="text-sm font-bold truncate">{formatDuration(fert.organic_fert_secs)}</p>
+                <p className="text-sm font-bold truncate">{formatDuration(bag.organic_fert_secs)}</p>
               </div>
             </div>
           </Card>

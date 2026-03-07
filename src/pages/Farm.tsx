@@ -1,52 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sprout, Scissors, Droplets, Bug, Leaf, Lock, Trash2, RefreshCw, Shovel, Coins, Star } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
-import { useTauriEvent } from "../hooks/useTauriEvent";
-import { useMinLoading } from "../hooks/useMinLoading";
+import { useAppStore } from "../store/useAppStore";
+import type { LandView } from "../types";
 import * as api from "../api";
-
-// --- Types ---
-
-interface LandView {
-  id: number;
-  unlocked: boolean;
-  level: number;
-  max_level: number;
-  status: "locked" | "empty" | "growing" | "mature" | "dead";
-  seed_id: number;
-  seed_name: string;
-  phase: number;
-  phase_name: string;
-  mature_in_sec: number;
-  total_grow_sec: number;
-  fruit_num: number;
-  need_water: boolean;
-  need_weed: boolean;
-  need_insect: boolean;
-  est_gold: number;
-  est_exp: number;
-  seasons: number;
-}
-
-interface FarmSummary {
-  total: number;
-  unlocked: number;
-  mature: number;
-  growing: number;
-  empty: number;
-  dead: number;
-  need_water: number;
-  need_weed: number;
-  need_insect: number;
-}
-
-interface FarmView {
-  lands: LandView[];
-  summary: FarmSummary;
-}
 
 // --- Helpers ---
 
@@ -200,28 +160,14 @@ function LandCard({ land }: { land: LandView }) {
 // --- Main Page ---
 
 export default function FarmPage() {
-  const [farm, setFarm] = useState<FarmView | null>(null);
-  const [loading, setLoading] = useMinLoading();
+  const farm = useAppStore((s) => s.farm);
+  const setFarm = useAppStore((s) => s.setFarm);
+  const fetchFarm = useAppStore((s) => s.fetchFarm);
   const [busy, setBusy] = useState<string | null>(null);
   const { toast } = useToast();
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  const fetchLands = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = (await api.getAllLands()) as FarmView;
-      setFarm(res);
-    } catch (e) {
-      if (String(e) !== "Not connected") console.error("Failed to load lands:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchLands();
-  }, [fetchLands]);
-
+  // Countdown timer — ticks mature_in_sec locally in the store
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setFarm((prev) => {
@@ -245,30 +191,13 @@ export default function FarmPage() {
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, []);
-
-  const handleDataChanged = useCallback(
-    (scope: string) => {
-      if (scope === "farm") fetchLands();
-    },
-    [fetchLands]
-  );
-  useTauriEvent("data-changed", handleDataChanged, 2000);
-
-  const handleStatusChanged = useCallback(
-    (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") fetchLands();
-      else if (payload.connection === "Disconnected") setFarm(null);
-    },
-    [fetchLands]
-  );
-  useTauriEvent("status-changed", handleStatusChanged);
+  }, [setFarm]);
 
   const runAction = async (key: string, fn: () => Promise<unknown>, successMsg?: string) => {
     setBusy(key);
     try {
       const result = await fn();
-      await fetchLands();
+      await fetchFarm();
       toast("success", typeof result === "string" ? result : successMsg ?? "操作成功");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -324,9 +253,9 @@ export default function FarmPage() {
           <Button
             size="sm"
             variant="ghost"
-            icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
-            onClick={fetchLands}
-            disabled={loading || !!busy}
+            icon={<RefreshCw className="size-3.5" />}
+            onClick={fetchFarm}
+            disabled={!!busy}
           >
             刷新
           </Button>
@@ -404,7 +333,7 @@ export default function FarmPage() {
         </>}
       />
 
-      {lands.length === 0 && !loading ? (
+      {lands.length === 0 ? (
         <EmptyState
           icon={<Sprout className="size-10" />}
           title="暂无土地数据"

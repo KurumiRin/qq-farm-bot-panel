@@ -1,28 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Users, Scissors, Droplets, Leaf, Bug, RefreshCw, Zap, Radar } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
-import { useTauriEvent } from "../hooks/useTauriEvent";
-import { useMinLoading } from "../hooks/useMinLoading";
+import { useAppStore } from "../store/useAppStore";
+import type { FriendView } from "../types";
 import * as api from "../api";
-
-interface FriendView {
-  gid: number;
-  name: string;
-  level: number;
-  avatar_url: string;
-  steal_count: number;
-  dry_count: number;
-  weed_count: number;
-  insect_count: number;
-}
-
-interface FriendsData {
-  friends: FriendView[];
-  application_count: number;
-}
 
 type Filter = "all" | "steal" | "dry" | "weed" | "insect" | "idle";
 
@@ -49,8 +33,10 @@ function matchFilter(f: FriendView, filter: Filter): boolean {
 const VISIT_DEBOUNCE_MS = 2000;
 
 export default function FriendsPage() {
-  const [data, setData] = useState<FriendsData | null>(null);
-  const [loading, setLoading] = useMinLoading();
+  const rawData = useAppStore((s) => s.friends);
+  const fetchFriends = useAppStore((s) => s.fetchFriends);
+  const connection = useAppStore((s) => s.connection);
+
   const [busy, setBusy] = useState<number | null>(null);
   const [filter, _setFilter] = useState<Filter>("all");
   const [filterKey, setFilterKey] = useState(0);
@@ -66,52 +52,52 @@ export default function FriendsPage() {
   };
 
   // Stabilize friend order: keep existing positions, append new friends at end
-  const stabilize = (friends: FriendView[]): FriendView[] => {
+  const data = useMemo(() => {
+    if (!rawData) return null;
     const order = orderRef.current;
-    const newGids = new Set(friends.map((f) => f.gid));
+    const newGids = new Set(rawData.friends.map((f) => f.gid));
     orderRef.current = order.filter((gid) => newGids.has(gid));
-    for (const f of friends) {
+    for (const f of rawData.friends) {
       if (!orderRef.current.includes(f.gid)) orderRef.current.push(f.gid);
     }
     const posMap = new Map(orderRef.current.map((gid, i) => [gid, i]));
-    return friends.slice().sort((a, b) => (posMap.get(a.gid) ?? 0) - (posMap.get(b.gid) ?? 0));
-  };
+    const friends = rawData.friends.slice().sort((a, b) => (posMap.get(a.gid) ?? 0) - (posMap.get(b.gid) ?? 0));
+    return { ...rawData, friends };
+  }, [rawData]);
 
-  const fetchFriends = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = (await api.getFriends()) as FriendsData;
-      setData({ ...res, friends: stabilize(res.friends) });
-    } catch (e) {
-      if (String(e) !== "Not connected") console.error("Failed to load friends:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Schedule auto-refresh based on config interval (cached to avoid extra requests)
+  // Schedule auto-refresh based on config interval
   const cachedIntervalRef = useRef<number>(295_000);
   const scheduleAutoRefresh = useCallback(() => {
     clearTimeout(autoRefreshRef.current);
     autoRefreshRef.current = setTimeout(() => {
       fetchFriends().then(scheduleAutoRefresh);
     }, cachedIntervalRef.current);
-    // Refresh interval from config in background (non-blocking)
     api.getAutomationConfig().then((config) => {
       cachedIntervalRef.current = Math.max((config.intervals.friend_min - 5) * 1000, 2_000);
     }).catch(() => {});
   }, [fetchFriends]);
 
-  // Initial fetch + start auto-refresh
+  // Start auto-refresh on mount
   useEffect(() => {
-    fetchFriends().then(scheduleAutoRefresh);
+    scheduleAutoRefresh();
     return () => {
       clearTimeout(autoRefreshRef.current);
       clearTimeout(visitDebounceRef.current);
     };
-  }, [fetchFriends, scheduleAutoRefresh]);
+  }, [scheduleAutoRefresh]);
 
-  // Debounced fetch after visit: resets timer on each new visit
+  // Connection changes
+  useEffect(() => {
+    if (connection === "LoggedIn") {
+      scheduleAutoRefresh();
+    } else if (connection === "Disconnected") {
+      setFilter("all");
+      setVisited(new Set());
+      clearTimeout(autoRefreshRef.current);
+      clearTimeout(visitDebounceRef.current);
+    }
+  }, [connection, scheduleAutoRefresh]);
+
   const scheduleDebouncedFetch = useCallback(() => {
     clearTimeout(visitDebounceRef.current);
     visitDebounceRef.current = setTimeout(() => {
@@ -121,22 +107,6 @@ export default function FriendsPage() {
       });
     }, VISIT_DEBOUNCE_MS);
   }, [fetchFriends, scheduleAutoRefresh]);
-
-  const handleStatusChanged = useCallback(
-    (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") {
-        fetchFriends().then(scheduleAutoRefresh);
-      } else if (payload.connection === "Disconnected") {
-        setData(null);
-        setFilter("all");
-        setVisited(new Set());
-        clearTimeout(autoRefreshRef.current);
-        clearTimeout(visitDebounceRef.current);
-      }
-    },
-    [fetchFriends, scheduleAutoRefresh]
-  );
-  useTauriEvent("status-changed", handleStatusChanged);
 
   const handleVisit = async (friend: FriendView) => {
     setBusy(friend.gid);
@@ -170,7 +140,6 @@ export default function FriendsPage() {
         const msg = e instanceof Error ? e.message : String(e);
         toast("error", `${friend.name}: ${msg}`);
       }
-      // Small delay between friends to avoid server rate limiting
       if (i < actionable.length - 1) {
         await new Promise((r) => setTimeout(r, 300));
       }
@@ -210,9 +179,9 @@ export default function FriendsPage() {
             <Button
               size="sm"
               variant="ghost"
-              icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
+              icon={<RefreshCw className="size-3.5" />}
               onClick={handleManualRefresh}
-              disabled={loading || busy !== null}
+              disabled={busy !== null}
             >
               刷新
             </Button>
@@ -253,7 +222,7 @@ export default function FriendsPage() {
         ) : undefined}
       />
 
-      {friends.length === 0 && !loading ? (
+      {friends.length === 0 ? (
         <EmptyState
           icon={<Users className="size-10" />}
           title={data ? "无匹配好友" : "暂无好友数据"}

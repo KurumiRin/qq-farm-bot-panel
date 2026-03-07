@@ -1,49 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { ListTodo, Gift, Star, Zap, Check, Lock, ChevronDown, ChevronUp } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
-import { useTauriEvent } from "../hooks/useTauriEvent";
+import { useAppStore } from "../store/useAppStore";
+import type { TaskView, ActiveView, RewardView } from "../types";
 import * as api from "../api";
-
-interface RewardView {
-  id: number;
-  count: number;
-  name: string;
-}
-
-interface TaskView {
-  id: number;
-  desc: string;
-  progress: number;
-  total_progress: number;
-  is_claimed: boolean;
-  is_unlocked: boolean;
-  task_type: number;
-  share_multiple: number;
-  rewards: RewardView[];
-}
-
-interface ActiveRewardView {
-  point_id: number;
-  need_progress: number;
-  status: number;
-  rewards: RewardView[];
-}
-
-interface ActiveView {
-  active_type: number;
-  progress: number;
-  rewards: ActiveRewardView[];
-}
-
-interface TasksData {
-  growth_tasks: TaskView[];
-  daily_tasks: TaskView[];
-  tasks: TaskView[];
-  actives: ActiveView[];
-}
 
 function RewardBadges({ rewards }: { rewards: RewardView[] }) {
   if (!rewards.length) return null;
@@ -238,42 +201,9 @@ function ActiveSection({ actives }: { actives: ActiveView[] }) {
 }
 
 export default function TasksPage() {
-  const [data, setData] = useState<TasksData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const data = useAppStore((s) => s.tasks);
+  const fetchTasks = useAppStore((s) => s.fetchTasks);
   const [claiming, setClaiming] = useState(false);
-
-  const fetchTasks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = (await api.getTasks()) as TasksData;
-      setData(res);
-    } catch (e) {
-      if (String(e) !== "Not connected") console.error("Failed to load tasks:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  const handleDataChanged = useCallback(
-    (scope: string) => {
-      if (scope === "tasks") fetchTasks();
-    },
-    [fetchTasks]
-  );
-  useTauriEvent("data-changed", handleDataChanged, 2000);
-
-  const handleStatusChanged = useCallback(
-    (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") fetchTasks();
-      else if (payload.connection === "Disconnected") setData(null);
-    },
-    [fetchTasks]
-  );
-  useTauriEvent("status-changed", handleStatusChanged);
 
   const handleClaimAll = async () => {
     setClaiming(true);
@@ -323,7 +253,7 @@ export default function TasksPage() {
         ) : undefined}
       />
 
-      {isEmpty && !loading ? (
+      {isEmpty ? (
         <EmptyState
           icon={<ListTodo className="size-10" />}
           title="暂无任务"

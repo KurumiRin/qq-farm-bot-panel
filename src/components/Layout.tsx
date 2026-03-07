@@ -21,9 +21,9 @@ function formatCompact(n: number): string {
   if (n >= 10_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   return n.toLocaleString();
 }
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useStatus } from "../hooks/useStatus";
+import { useAppStore } from "../store/useAppStore";
 import { useIndicator } from "../hooks/useIndicator";
 import * as api from "../api";
 
@@ -173,8 +173,13 @@ function CodeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 export default function Layout() {
-  const { status } = useStatus();
+  const status = useAppStore((s) => s.status);
+  const initListeners = useAppStore((s) => s.initListeners);
   const [codeDialogOpen, setCodeDialogOpen] = useState(false);
+
+  useEffect(() => {
+    return initListeners();
+  }, [initListeners]);
 
   const isConnected =
     status?.connection === "LoggedIn" || status?.connection === "Connected";
