@@ -269,6 +269,7 @@ export default function TasksPage() {
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
       if (payload.connection === "LoggedIn") fetchTasks();
+      else if (payload.connection === "Disconnected") setData(null);
     },
     [fetchTasks]
   );

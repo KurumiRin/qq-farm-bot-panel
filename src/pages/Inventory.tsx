@@ -151,6 +151,7 @@ export default function InventoryPage() {
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
       if (payload.connection === "LoggedIn") fetchBag();
+      else if (payload.connection === "Disconnected") setBag(null);
     },
     [fetchBag]
   );

@@ -84,7 +84,10 @@ export default function DashboardPage() {
   useTauriEvent("data-changed", handleDataChanged);
 
   const handleStatusChanged = useCallback(
-    (payload: { connection: string }) => { if (payload.connection === "LoggedIn") fetchFert(); },
+    (payload: { connection: string }) => {
+      if (payload.connection === "LoggedIn") fetchFert();
+      else if (payload.connection === "Disconnected") setFert(null);
+    },
     [fetchFert]
   );
   useTauriEvent("status-changed", handleStatusChanged);

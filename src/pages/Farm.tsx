@@ -251,6 +251,7 @@ export default function FarmPage() {
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
       if (payload.connection === "LoggedIn") fetchLands();
+      else if (payload.connection === "Disconnected") setFarm(null);
     },
     [fetchLands]
   );
