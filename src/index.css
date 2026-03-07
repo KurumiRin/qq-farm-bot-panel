@@ -85,7 +85,7 @@
   }
 
   .animate-list-item {
-    animation: list-item-in 0.2s ease-out both;
+    animation: list-item-in 0.12s ease-out both;
   }
 
   /* Tab slide animations */
