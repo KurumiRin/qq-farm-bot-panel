@@ -26,7 +26,7 @@ export function Card({
   return (
     <div
       className={clsx(
-        "rounded-card border border-border bg-surface p-4 md:p-5",
+        "rounded-card border border-border bg-surface p-3.5 md:p-4",
         className
       )}
     >
@@ -60,11 +60,11 @@ export function Card({
           )}
         >
           <div className="overflow-hidden">
-            <div className="pt-4">{children}</div>
+            <div className="pt-3">{children}</div>
           </div>
         </div>
       ) : (
-        (title || action) ? <div className="pt-4">{children}</div> : children
+        (title || action) ? <div className="pt-3">{children}</div> : children
       )}
     </div>
   );

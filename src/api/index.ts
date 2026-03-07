@@ -82,6 +82,8 @@ export const getShopInfo = (shopId: number) =>
 export const getLogs = (since?: number) =>
   invoke<LogEntry[]>("get_logs", { since: since ?? null });
 
+export const clearLogs = () => invoke<void>("clear_logs");
+
 // System
 export const restartCodeReceiver = () =>
   invoke<void>("restart_code_receiver");

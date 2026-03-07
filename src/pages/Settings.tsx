@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Save, RotateCw } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 import { SEEDS } from "../data/seeds";
 import type {
   AutomationConfig,
@@ -223,25 +224,25 @@ export default function SettingsPage() {
   return (
     <div className="relative max-w-2xl">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-surface-dim pb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">设置</h1>
-            <p className="text-sm text-on-surface-muted">配置自动化行为</p>
-          </div>
-          <Button
-            size="sm"
-            icon={saved ? undefined : <Save className="size-3.5" />}
-            onClick={handleSave}
-            loading={saving}
-          >
-            {saved ? "已保存" : "保存"}
-          </Button>
-        </div>
+      <div className="sticky top-0 z-10 bg-surface-dim pb-4">
+        <PageHeader
+          title="设置"
+          tags={[{ label: "配置自动化行为" }]}
+          actions={
+            <Button
+              size="sm"
+              icon={saved ? undefined : <Save className="size-3.5" />}
+              onClick={handleSave}
+              loading={saving}
+            >
+              {saved ? "已保存" : "保存"}
+            </Button>
+          }
+        />
         <div className="absolute bottom-0 left-0 right-0 h-4 bg-linear-to-b from-surface-dim to-transparent pointer-events-none" />
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-3">
         {/* ===== 巡查节奏 ===== */}
         <Card title="巡查节奏" collapsible>
           <p className="text-xs text-on-surface-muted mb-3">
