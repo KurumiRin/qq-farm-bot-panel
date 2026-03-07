@@ -43,7 +43,9 @@ pub struct NetworkManager {
     ws_sink: Arc<Mutex<Option<WsSink>>>,
     connected: AtomicBool,
     event_tx: mpsc::UnboundedSender<NetworkEvent>,
-    event_rx: Arc<Mutex<mpsc::UnboundedReceiver<NetworkEvent>>>,
+    event_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<NetworkEvent>>>>,
+    /// Incremented on disconnect to cancel in-flight auto-reconnect
+    reconnect_generation: AtomicI64,
 }
 
 impl NetworkManager {
@@ -57,12 +59,19 @@ impl NetworkManager {
             ws_sink: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
             event_tx,
-            event_rx: Arc::new(Mutex::new(event_rx)),
+            event_rx: Arc::new(Mutex::new(Some(event_rx))),
+            reconnect_generation: AtomicI64::new(0),
         })
     }
 
     pub fn event_sender(&self) -> mpsc::UnboundedSender<NetworkEvent> {
         self.event_tx.clone()
+    }
+
+    /// Take the event receiver (can only be called once).
+    /// Used by AutomationEngine to consume push notification events.
+    pub async fn take_event_rx(&self) -> Option<mpsc::UnboundedReceiver<NetworkEvent>> {
+        self.event_rx.lock().await.take()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -278,6 +287,7 @@ impl NetworkManager {
 
     /// Disconnect and clean up
     pub async fn disconnect(&self) {
+        self.reconnect_generation.fetch_add(1, Ordering::Relaxed);
         self.connected.store(false, Ordering::Relaxed);
 
         // Close WebSocket
@@ -328,10 +338,10 @@ impl NetworkManager {
         // Auto-reconnect if we have a login code (not manually disconnected)
         let code = self.state.login_code.read().clone();
         if let Some(code) = code {
+            let gen = self.reconnect_generation.load(Ordering::Relaxed);
             self.state.set_connection_status(ConnectionStatus::Reconnecting);
             self.state.push_log("warn", format!("连接断开 ({})，准备自动重连...", close_reason));
-            // Free function to break opaque async type cycle
-            auto_reconnect(self, code).await;
+            auto_reconnect(self, code, gen).await;
         } else {
             self.state.set_connection_status(ConnectionStatus::Disconnected);
             self.state.push_log("warn", format!("连接断开 ({})", close_reason));
@@ -457,6 +467,7 @@ impl NetworkManager {
                 }
                 if changed {
                     self.state.emit_status();
+                    crate::state::emit_data_changed("inventory");
                 }
             }
         } else if msg_type.contains("BasicNotify") {
@@ -501,11 +512,17 @@ impl NetworkManager {
 }
 
 /// Auto reconnect with exponential backoff (free function to break async type cycle).
-async fn auto_reconnect(nm: Arc<NetworkManager>, code: String) {
+async fn auto_reconnect(nm: Arc<NetworkManager>, code: String, generation: i64) {
     let delays = [3u64, 5, 10, 15, 30, 60];
     for (attempt, &delay) in delays.iter().enumerate() {
         nm.state.push_log("info", format!("第 {} 次重连，{}秒后尝试...", attempt + 1, delay));
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+
+        // Abort if generation changed (new connect/disconnect happened)
+        if nm.reconnect_generation.load(Ordering::Relaxed) != generation {
+            log::info!("[WS] Auto-reconnect cancelled (new connection initiated)");
+            return;
+        }
 
         // Abort if user manually disconnected during wait
         if nm.state.login_code.read().is_none() {

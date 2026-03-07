@@ -4,7 +4,7 @@ use std::time::Duration;
 use rand::Rng;
 use tokio::sync::watch;
 
-use crate::network::NetworkManager;
+use crate::network::{NetworkManager, NetworkEvent};
 use crate::state::{self, AppState};
 
 use super::email::EmailService;
@@ -18,6 +18,7 @@ use super::warehouse::WarehouseService;
 
 /// Orchestrates all automation loops
 pub struct AutomationEngine {
+    network: Arc<NetworkManager>,
     farm: FarmService,
     friend: FriendService,
     warehouse: WarehouseService,
@@ -35,6 +36,7 @@ impl AutomationEngine {
     pub fn new(network: Arc<NetworkManager>, state: Arc<AppState>) -> Self {
         let (stop_tx, stop_rx) = watch::channel(false);
         Self {
+            network: Arc::clone(&network),
             farm: FarmService::new(Arc::clone(&network), Arc::clone(&state)),
             friend: FriendService::new(Arc::clone(&network), Arc::clone(&state)),
             warehouse: WarehouseService::new(Arc::clone(&network), Arc::clone(&state)),
@@ -230,6 +232,67 @@ impl AutomationEngine {
                 }
             }
         });
+
+        // Server push notification event loop
+        if let Some(mut event_rx) = self.network.take_event_rx().await {
+            let engine = Arc::clone(&self);
+            let mut stop_rx = self.stop_rx.clone();
+            tokio::spawn(async move {
+                // Debounce: minimum interval between push-triggered farm checks
+                let mut last_farm_check = tokio::time::Instant::now() - Duration::from_secs(10);
+                let debounce = Duration::from_millis(500);
+
+                loop {
+                    tokio::select! {
+                        event = event_rx.recv() => {
+                            let Some(event) = event else { break };
+                            match event {
+                                NetworkEvent::LandsChanged { lands } => {
+                                    let count = lands.len();
+                                    log::info!("[Push] LandsNotify: {} lands changed", count);
+                                    engine.state.push_log("info", format!("收到农田变化推送 ({}块地)", count));
+                                    // Notify frontend immediately
+                                    state::emit_data_changed("farm");
+                                    // Trigger immediate farm check with debounce
+                                    let now = tokio::time::Instant::now();
+                                    if now.duration_since(last_farm_check) >= debounce && engine.state.is_logged_in() {
+                                        last_farm_check = now;
+                                        if let Err(e) = engine.farm.auto_check_farm().await {
+                                            log::warn!("Push-triggered farm check failed: {}", e);
+                                        }
+                                        state::emit_data_changed("farm");
+                                    }
+                                }
+                                NetworkEvent::Kickout { reason } => {
+                                    engine.state.push_log("error", format!("被踢出游戏: {}", reason));
+                                    engine.network.disconnect().await;
+                                }
+                                NetworkEvent::BasicNotify { .. } => {
+                                    // State already updated in handle_notify
+                                }
+                                NetworkEvent::FriendApplicationReceived => {
+                                    engine.state.push_log("info", "收到好友申请");
+                                    state::emit_data_changed("friends");
+                                }
+                                NetworkEvent::FriendAdded { names } => {
+                                    engine.state.push_log("info", format!("新好友: {}", names.join(", ")));
+                                    state::emit_data_changed("friends");
+                                }
+                                NetworkEvent::TaskInfoNotify => {
+                                    state::emit_data_changed("tasks");
+                                }
+                                NetworkEvent::GoodsUnlockNotify => {
+                                    engine.state.push_log("info", "新商品已解锁");
+                                    state::emit_data_changed("inventory");
+                                }
+                            }
+                        }
+                        _ = stop_rx.changed() => break,
+                    }
+                }
+                log::info!("[Push] Event loop stopped");
+            });
+        }
     }
 }
 

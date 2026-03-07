@@ -208,6 +208,9 @@ async fn do_connect(
     engine_slot: &Arc<tokio::sync::Mutex<Option<Arc<AutomationEngine>>>>,
     code: &str,
 ) -> Result<(), String> {
+    // Abort any in-progress auto-reconnect and close old connection
+    network.disconnect().await;
+
     *app_state.login_code.write() = Some(code.to_string());
 
     network.connect(code).await.map_err(|e| e.to_string())?;
