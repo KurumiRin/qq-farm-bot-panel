@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Users, Scissors, Droplets, Leaf, Bug, RefreshCw, Zap } from "lucide-react";
+import { Users, Scissors, Droplets, Leaf, Bug, RefreshCw, Zap, Radar } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
@@ -23,22 +23,64 @@ interface FriendsData {
   application_count: number;
 }
 
-const CACHE_MIN_MS = 10_000; // Don't re-fetch within 10s
+type Filter = "all" | "steal" | "dry" | "weed" | "insect" | "idle";
+
+const filters: { key: Filter; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "steal", label: "可偷" },
+  { key: "dry", label: "旱" },
+  { key: "weed", label: "草" },
+  { key: "insect", label: "虫" },
+  { key: "idle", label: "无操作" },
+];
+
+function matchFilter(f: FriendView, filter: Filter): boolean {
+  switch (filter) {
+    case "all": return true;
+    case "steal": return f.steal_count > 0;
+    case "dry": return f.dry_count > 0;
+    case "weed": return f.weed_count > 0;
+    case "insect": return f.insect_count > 0;
+    case "idle": return f.steal_count === 0 && f.dry_count === 0 && f.weed_count === 0 && f.insect_count === 0;
+  }
+}
+
+const VISIT_DEBOUNCE_MS = 2000;
 
 export default function FriendsPage() {
   const [data, setData] = useState<FriendsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
-  const lastFetchRef = useRef(0);
+  const [filter, _setFilter] = useState<Filter>("all");
+  const [filterKey, setFilterKey] = useState(0);
+  const [visited, setVisited] = useState<Set<number>>(new Set());
+  const orderRef = useRef<number[]>([]);
+  const visitDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout>>();
   const { toast } = useToast();
 
-  const fetchFriends = useCallback(async (force = false) => {
-    if (!force && Date.now() - lastFetchRef.current < CACHE_MIN_MS) return;
+  const setFilter = (f: Filter) => {
+    _setFilter(f);
+    setFilterKey((k) => k + 1);
+  };
+
+  // Stabilize friend order: keep existing positions, append new friends at end
+  const stabilize = (friends: FriendView[]): FriendView[] => {
+    const order = orderRef.current;
+    const newGids = new Set(friends.map((f) => f.gid));
+    orderRef.current = order.filter((gid) => newGids.has(gid));
+    for (const f of friends) {
+      if (!orderRef.current.includes(f.gid)) orderRef.current.push(f.gid);
+    }
+    const posMap = new Map(orderRef.current.map((gid, i) => [gid, i]));
+    return friends.slice().sort((a, b) => (posMap.get(a.gid) ?? 0) - (posMap.get(b.gid) ?? 0));
+  };
+
+  const fetchFriends = useCallback(async () => {
     setLoading(true);
     try {
       const res = (await api.getFriends()) as FriendsData;
-      setData(res);
-      lastFetchRef.current = Date.now();
+      setData({ ...res, friends: stabilize(res.friends) });
     } catch (e) {
       console.error("Failed to load friends:", e);
     } finally {
@@ -46,23 +88,56 @@ export default function FriendsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchFriends(true);
+  // Schedule auto-refresh based on config interval
+  const scheduleAutoRefresh = useCallback(() => {
+    clearTimeout(autoRefreshRef.current);
+    // Use friend interval from config, default 5min, minus 10s
+    api.getAutomationConfig().then((config) => {
+      const intervalMs = Math.max((config.intervals.friend_min - 5) * 1000, 2_000);
+      autoRefreshRef.current = setTimeout(() => {
+        fetchFriends().then(scheduleAutoRefresh);
+      }, intervalMs);
+    }).catch(() => {
+      // Fallback: 5min
+      autoRefreshRef.current = setTimeout(() => {
+        fetchFriends().then(scheduleAutoRefresh);
+      }, 295_000);
+    });
   }, [fetchFriends]);
 
-  const handleDataChanged = useCallback(
-    (scope: string) => {
-      if (scope === "friends") fetchFriends();
-    },
-    [fetchFriends]
-  );
-  useTauriEvent("data-changed", handleDataChanged);
+  // Initial fetch + start auto-refresh
+  useEffect(() => {
+    fetchFriends().then(scheduleAutoRefresh);
+    return () => {
+      clearTimeout(autoRefreshRef.current);
+      clearTimeout(visitDebounceRef.current);
+    };
+  }, [fetchFriends, scheduleAutoRefresh]);
+
+  // Debounced fetch after visit: resets timer on each new visit
+  const scheduleDebouncedFetch = useCallback(() => {
+    clearTimeout(visitDebounceRef.current);
+    visitDebounceRef.current = setTimeout(() => {
+      fetchFriends().then(() => {
+        setVisited(new Set());
+        scheduleAutoRefresh();
+      });
+    }, VISIT_DEBOUNCE_MS);
+  }, [fetchFriends, scheduleAutoRefresh]);
 
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") fetchFriends(true);
+      if (payload.connection === "LoggedIn") {
+        fetchFriends().then(scheduleAutoRefresh);
+      } else if (payload.connection === "Disconnected") {
+        setData(null);
+        setFilter("all");
+        setVisited(new Set());
+        clearTimeout(autoRefreshRef.current);
+        clearTimeout(visitDebounceRef.current);
+      }
     },
-    [fetchFriends]
+    [fetchFriends, scheduleAutoRefresh]
   );
   useTauriEvent("status-changed", handleStatusChanged);
 
@@ -71,7 +146,8 @@ export default function FriendsPage() {
     try {
       const result = await api.visitAndActFriend(friend.gid);
       toast("success", `${friend.name}: ${result}`);
-      await fetchFriends(true);
+      setVisited((s) => new Set(s).add(friend.gid));
+      scheduleDebouncedFetch();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast("error", msg);
@@ -80,65 +156,129 @@ export default function FriendsPage() {
     }
   };
 
-  const friends = data?.friends ?? [];
-  const hasAction = friends.filter(
-    (f) => f.steal_count > 0 || f.dry_count > 0 || f.weed_count > 0 || f.insect_count > 0
-  );
+  const handleVisitAll = async () => {
+    const actionable = (data?.friends ?? []).filter(
+      (f) => !visited.has(f.gid) &&
+        (f.steal_count > 0 || f.dry_count > 0 || f.weed_count > 0 || f.insect_count > 0)
+    );
+    if (actionable.length === 0) return;
+    for (const friend of actionable) {
+      setBusy(friend.gid);
+      try {
+        const result = await api.visitAndActFriend(friend.gid);
+        toast("success", `${friend.name}: ${result}`);
+        setVisited((s) => new Set(s).add(friend.gid));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast("error", `${friend.name}: ${msg}`);
+      }
+    }
+    setBusy(null);
+    scheduleDebouncedFetch();
+  };
+
+  const handleManualRefresh = () => {
+    setVisited(new Set());
+    clearTimeout(visitDebounceRef.current);
+    fetchFriends().then(scheduleAutoRefresh);
+  };
+
+  const allFriends = data?.friends ?? [];
+  const friends = allFriends.filter((f) => matchFilter(f, filter));
+
+  const counts: Record<Filter, number> = {
+    all: allFriends.length,
+    steal: allFriends.filter((f) => f.steal_count > 0).length,
+    dry: allFriends.filter((f) => f.dry_count > 0).length,
+    weed: allFriends.filter((f) => f.weed_count > 0).length,
+    insect: allFriends.filter((f) => f.insect_count > 0).length,
+    idle: allFriends.filter((f) => f.steal_count === 0 && f.dry_count === 0 && f.weed_count === 0 && f.insect_count === 0).length,
+  };
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="好友"
         tags={data ? [
-          { label: "好友", value: friends.length },
-          { label: "可操作", value: hasAction.length, cls: "bg-green-500/10 text-green-700 dark:text-green-400", hidden: hasAction.length === 0 },
+          { label: `${allFriends.length} 位好友种菜中` },
           { label: "待处理申请", value: data.application_count, cls: "bg-primary-500/10 text-primary-600 dark:text-primary-400", hidden: data.application_count === 0 },
         ] : [{ label: "加载中..." }]}
         actions={
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
-            onClick={() => fetchFriends(true)}
-            disabled={loading || busy !== null}
-          >
-            刷新
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
+              onClick={handleManualRefresh}
+              disabled={loading || busy !== null}
+            >
+              刷新
+            </Button>
+            {counts.all - counts.idle > 0 && (
+              <Button
+                size="sm"
+                icon={<Radar className="size-3.5" />}
+                onClick={handleVisitAll}
+                loading={busy !== null}
+              >
+                一键巡逻
+              </Button>
+            )}
+          </div>
         }
+        tagActions={allFriends.length > 0 ? (
+          <div className="flex items-center gap-1">
+            {filters.map(({ key, label }) => {
+              const count = counts[key];
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                    filter === key
+                      ? "bg-primary-500 text-white"
+                      : "bg-surface-bright text-on-surface-muted hover:text-on-surface"
+                  }`}
+                >
+                  {label}
+                  <span className={`text-[10px] ${filter === key ? "text-white/70" : "text-on-surface-muted/60"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : undefined}
       />
 
       {friends.length === 0 && !loading ? (
         <EmptyState
           icon={<Users className="size-10" />}
-          title="暂无好友数据"
-          description="请先连接游戏服务器"
+          title={data ? "无匹配好友" : "暂无好友数据"}
+          description={data ? "切换筛选条件查看" : "请先连接游戏服务器"}
         />
       ) : (
-        <div className="space-y-1">
-          {friends.map((friend) => {
+        <div key={filterKey} className="space-y-1">
+          {friends.map((friend, i) => {
             const hasAny =
               friend.steal_count > 0 ||
               friend.dry_count > 0 ||
               friend.weed_count > 0 ||
               friend.insect_count > 0;
+            const isVisited = visited.has(friend.gid);
 
             return (
               <div
                 key={friend.gid}
-                className="flex items-center gap-3 rounded-lg border border-border bg-surface p-2.5"
+                className="animate-list-item flex items-center gap-3 rounded-lg border border-border bg-surface p-2.5"
+                style={{ animationDelay: `${Math.min(i * 20, 300)}ms` }}
               >
                 {/* Avatar */}
                 <div className="size-9 rounded-full bg-surface-bright flex items-center justify-center shrink-0 overflow-hidden">
                   {friend.avatar_url ? (
-                    <img
-                      src={friend.avatar_url}
-                      alt=""
-                      className="size-9 rounded-full object-cover"
-                    />
+                    <img src={friend.avatar_url} alt="" className="size-9 rounded-full object-cover" />
                   ) : (
-                    <span className="text-xs font-bold text-on-surface-muted">
-                      {friend.name.charAt(0)}
-                    </span>
+                    <span className="text-xs font-bold text-on-surface-muted">{friend.name.charAt(0)}</span>
                   )}
                 </div>
 
@@ -146,12 +286,9 @@ export default function FriendsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium truncate">{friend.name}</span>
-                    <span className="text-[11px] text-on-surface-muted shrink-0">
-                      Lv.{friend.level}
-                    </span>
+                    <span className="text-[11px] text-on-surface-muted shrink-0">Lv.{friend.level}</span>
                   </div>
-                  {/* Status tags */}
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-1 mt-0.5 min-h-4.5">
                     {friend.steal_count > 0 && (
                       <span className="inline-flex items-center gap-px rounded px-1 py-px bg-orange-500/15 text-orange-600 dark:text-orange-400">
                         <Scissors className="size-2.5" />
@@ -176,14 +313,14 @@ export default function FriendsPage() {
                         <span className="text-[10px] font-medium">虫 {friend.insect_count}</span>
                       </span>
                     )}
-                    {!hasAny && (
+                    {!hasAny && !isVisited && (
                       <span className="text-[10px] text-on-surface-muted/50">无需操作</span>
                     )}
                   </div>
                 </div>
 
                 {/* Action button */}
-                {hasAny && (
+                {hasAny && !isVisited && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -192,7 +329,7 @@ export default function FriendsPage() {
                     loading={busy === friend.gid}
                     disabled={busy !== null}
                   >
-                    执行
+                    巡逻
                   </Button>
                 )}
               </div>
