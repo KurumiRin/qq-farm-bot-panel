@@ -29,7 +29,7 @@ export function Button({
           "bg-surface-bright text-on-surface hover:bg-border":
             variant === "secondary",
           "bg-red-500 text-white hover:bg-red-600": variant === "danger",
-          "text-on-surface-muted hover:bg-surface-bright hover:text-on-surface":
+          "border border-border text-on-surface-muted hover:bg-surface-bright hover:text-on-surface":
             variant === "ghost",
         },
         size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",
