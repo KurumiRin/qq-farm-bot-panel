@@ -10,6 +10,8 @@ import {
   ScrollText,
   LogOut,
   Circle,
+  PlugZap,
+  X,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useRef, useState, useLayoutEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -109,7 +111,7 @@ function KeepAlivePages() {
       {pages.map(({ path, component: Page }) => (
         <div
           key={path}
-          className={clsx("h-full", location.pathname !== path && "hidden")}
+          className={clsx(location.pathname !== path && "hidden")}
         >
           <Page />
         </div>
@@ -118,8 +120,61 @@ function KeepAlivePages() {
   );
 }
 
+function CodeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [code, setCode] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) return null;
+
+  const handleConnect = async () => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      await api.connectAndLogin(trimmed);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-[fade-in_150ms_ease-out] bg-black/40" onClick={onClose}>
+      <div className="w-80 rounded-xl bg-surface border border-border p-4 shadow-lg space-y-3 animate-[scale-in_150ms_ease-out]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">输入登录 Code</h3>
+          <button onClick={onClose} className="text-on-surface-muted hover:text-on-surface transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+        <input
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+          placeholder="粘贴 Code..."
+          className="w-full rounded-lg border border-border bg-surface-dim px-3 py-2 text-sm outline-none focus:border-primary-500"
+        />
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button
+          onClick={handleConnect}
+          disabled={!code.trim() || connecting}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-xs font-medium text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
+        >
+          {connecting ? "连接中..." : "连接"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Layout() {
   const { status } = useStatus();
+  const [codeDialogOpen, setCodeDialogOpen] = useState(false);
 
   const isConnected =
     status?.connection === "LoggedIn" || status?.connection === "Connected";
@@ -187,7 +242,7 @@ export default function Layout() {
               {isConnected ? "已连接到服务器" : "未连接"}
             </span>
           </div>
-          {isConnected && (
+          {isConnected ? (
             <button
               onClick={handleDisconnect}
               className="flex w-full items-center justify-center gap-1.5 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
@@ -195,8 +250,17 @@ export default function Layout() {
               <LogOut className="size-3" />
               断开连接
             </button>
+          ) : (
+            <button
+              onClick={() => setCodeDialogOpen(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-primary-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary-600 transition-colors"
+            >
+              <PlugZap className="size-3" />
+              输入 Code 连接
+            </button>
           )}
         </div>
+        <CodeDialog open={codeDialogOpen} onClose={() => setCodeDialogOpen(false)} />
       </aside>
 
       {/* Main content */}
