@@ -108,18 +108,18 @@ function LandCard({ land }: { land: LandView }) {
         )}
         <div className="flex gap-0.5 ml-auto">
           {land.need_water && (
-            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-blue-500/15 text-blue-600 dark:text-blue-400">
-              <Droplets className="size-2" /><span className="text-[8px] font-medium">旱</span>
+            <span className="inline-flex items-center gap-0.5 rounded px-1 py-px bg-blue-500/15 text-blue-600 dark:text-blue-400">
+              <Droplets className="size-2.5" /><span className="text-[9px] font-medium">旱</span>
             </span>
           )}
           {land.need_weed && (
-            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <Leaf className="size-2" /><span className="text-[8px] font-medium">草</span>
+            <span className="inline-flex items-center gap-0.5 rounded px-1 py-px bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <Leaf className="size-2.5" /><span className="text-[9px] font-medium">草</span>
             </span>
           )}
           {land.need_insect && (
-            <span className="inline-flex items-center gap-px rounded px-0.5 py-px bg-red-500/15 text-red-600 dark:text-red-400">
-              <Bug className="size-2" /><span className="text-[8px] font-medium">虫</span>
+            <span className="inline-flex items-center gap-0.5 rounded px-1 py-px bg-red-500/15 text-red-600 dark:text-red-400">
+              <Bug className="size-2.5" /><span className="text-[9px] font-medium">虫</span>
             </span>
           )}
         </div>
@@ -149,24 +149,22 @@ function LandCard({ land }: { land: LandView }) {
         </div>
       </div>
 
-      {/* Row 3: progress bar */}
-      <div className="flex items-center gap-1 h-3">
-        {isGrowing && land.total_grow_sec > 0 ? (
-          <>
-            <div className="flex-1 h-1 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-1000 ${soil?.bar ?? "bg-primary-500"}`}
-                style={{ width: `${(progress * 100).toFixed(1)}%` }}
-              />
-            </div>
-            {land.mature_in_sec > 0 && (
-              <span className="text-[9px] text-on-surface-muted tabular-nums shrink-0">{formatTime(land.mature_in_sec)}</span>
-            )}
-          </>
-        ) : isMature ? (
-          <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">可收获</span>
-        ) : null}
-      </div>
+      {/* Row 3: progress bar + time */}
+      {isGrowing && land.total_grow_sec > 0 ? (
+        <div className="space-y-0.5">
+          <div className="h-1 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-1000 ${progress >= 1 ? "bg-green-500" : "bg-blue-500"}`}
+              style={{ width: `${(progress * 100).toFixed(1)}%` }}
+            />
+          </div>
+          {land.mature_in_sec > 0 && (
+            <span className="text-[9px] text-on-surface-muted tabular-nums block text-right">{formatTime(land.mature_in_sec)}</span>
+          )}
+        </div>
+      ) : isMature ? (
+        <div className="h-1 rounded-full bg-green-500" />
+      ) : null}
 
       {/* Row 4: earnings estimate */}
       {!isEmpty && land.seed_id > 0 && (land.est_gold !== 0 || land.est_exp !== 0) && (

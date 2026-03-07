@@ -21,7 +21,7 @@ const startDrag = (e: React.MouseEvent) => {
   getCurrentWindow().startDragging();
 };
 
-const DRAG_CLASS = "absolute inset-x-0 top-0 h-11 z-10";
+const DRAG_CLASS = "absolute inset-x-0 top-0 h-11 z-20";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "仪表盘" },
