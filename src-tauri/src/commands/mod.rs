@@ -733,8 +733,8 @@ fn categorize_item(id: i64) -> &'static str {
     match id {
         // Gold & coupons shown as currency tags
         1 | 1001 | 1002 => "currency",
-        // Internal counters (fertilizer containers, exp, etc.) — hide completely
-        1003..=1999 => "hidden",
+        // Internal counters — hide completely
+        1003..=1999 | 3001..=3999 => "hidden",
         20000..=29999 => "seed",
         40000..=49999 => "fruit",
         80001..=80099 => "fertilizer",
@@ -889,11 +889,29 @@ pub async fn get_tasks(state: State<'_, TauriState>) -> Result<TasksView, String
 
     let info = reply.task_info.unwrap_or_default();
 
-    Ok(TasksView {
-        growth_tasks: info.growth_tasks.iter().map(make_task_view).collect(),
-        daily_tasks: info.daily_tasks.iter().map(make_task_view).collect(),
-        tasks: info.tasks.iter().map(make_task_view).collect(),
-        actives: info.actives.iter().map(|a| ActiveView {
+    // Merge all tasks and re-categorize by task_type
+    // task_type 1 = growth, 2 = daily, others = misc
+    let all_tasks: Vec<_> = info.growth_tasks.iter()
+        .chain(info.daily_tasks.iter())
+        .chain(info.tasks.iter())
+        .collect();
+
+    let mut growth_tasks = Vec::new();
+    let mut daily_tasks = Vec::new();
+    let mut tasks = Vec::new();
+    for task in &all_tasks {
+        let view = make_task_view(task);
+        match task.task_type {
+            1 => growth_tasks.push(view),
+            2 => daily_tasks.push(view),
+            _ => tasks.push(view),
+        }
+    }
+
+    // Only include actives that have non-zero progress
+    let actives: Vec<_> = info.actives.iter()
+        .filter(|a| a.progress > 0)
+        .map(|a| ActiveView {
             active_type: a.r#type,
             progress: a.progress,
             rewards: a.rewards.iter().map(|r| ActiveRewardView {
@@ -902,8 +920,9 @@ pub async fn get_tasks(state: State<'_, TauriState>) -> Result<TasksView, String
                 status: r.status,
                 rewards: make_reward_view(&r.rewards),
             }).collect(),
-        }).collect(),
-    })
+        }).collect();
+
+    Ok(TasksView { growth_tasks, daily_tasks, tasks, actives })
 }
 
 /// Manually claim all tasks
