@@ -93,21 +93,30 @@ impl AutomationEngine {
         self.network.is_connected()
     }
 
-    /// Smart planting: find best seed (from bag or shop), buy if needed, plant
-    pub async fn auto_plant_empty_lands(&self, empty_ids: &[i64]) {
-        if empty_ids.is_empty() {
+    /// Smart planting: remove dead plants, find best seed, buy if needed, plant
+    pub async fn auto_plant_empty_lands(&self, dead_ids: &[i64], empty_ids: &[i64]) {
+        // Remove dead plants first
+        if !dead_ids.is_empty() {
+            log::info!("Removing {} dead plants before planting", dead_ids.len());
+            if let Err(e) = self.farm.remove_plant(dead_ids.to_vec()).await {
+                log::warn!("Remove dead plants failed: {}", e);
+            } else {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+
+        let mut all_ids: Vec<i64> = Vec::with_capacity(dead_ids.len() + empty_ids.len());
+        all_ids.extend_from_slice(dead_ids);
+        all_ids.extend_from_slice(empty_ids);
+        if all_ids.is_empty() {
             return;
         }
         let config = self.state.automation_config.read().clone();
-        let need = empty_ids.len() as i64;
+        let need = all_ids.len() as i64;
 
-        // Sell fruits first to maximize gold (only if auto_sell is enabled)
+        // Sell fruits before planting to maximize gold for buying seeds
         if config.auto_sell {
-            if let Err(e) = self.warehouse.auto_sell_fruits().await {
-                log::warn!("Auto sell before planting failed: {}", e);
-            } else {
-                tokio::time::sleep(Duration::from_millis(300)).await;
-            }
+            let _ = self.warehouse.auto_sell_fruits().await;
         }
 
         // Get bag and shop data
@@ -134,7 +143,7 @@ impl AutomationEngine {
         // Try preferred seed from bag
         if let Some(pref_id) = config.preferred_seed_id {
             if bag_count(pref_id) >= need {
-                let ok = self.plant_one_by_one(pref_id, empty_ids).await;
+                let ok = self.plant_one_by_one(pref_id, &all_ids).await;
                 log::info!("Auto-planted preferred seed (from bag) x{}", ok);
                 return;
             }
@@ -143,7 +152,7 @@ impl AutomationEngine {
         // Try any seed from bag (highest price first)
         for goods in &unlocked_seeds {
             if bag_count(goods.item_id) >= need {
-                let ok = self.plant_one_by_one(goods.item_id, empty_ids).await;
+                let ok = self.plant_one_by_one(goods.item_id, &all_ids).await;
                 log::info!("Auto-planted (from bag) x{}", ok);
                 return;
             }
@@ -168,7 +177,7 @@ impl AutomationEngine {
                         let seed_id = buy_reply.get_items.first()
                             .map(|item| item.id).filter(|&id| id > 0)
                             .unwrap_or(goods.item_id);
-                        let ok = self.plant_one_by_one(seed_id, empty_ids).await;
+                        let ok = self.plant_one_by_one(seed_id, &all_ids).await;
                         log::info!("Auto-planted (bought {} seeds, cost {}) x{}", to_buy, goods.price * to_buy, ok);
                         return;
                     }
@@ -219,11 +228,21 @@ impl AutomationEngine {
                         if !engine.state.is_logged_in() { continue; }
                         engine.state.push_log("info", "开始巡田检查");
                         match engine.farm.auto_check_farm().await {
-                            Ok(empty_ids) => {
+                            Ok((dead_ids, empty_ids)) => {
                                 engine.state.push_log("info", "巡田检查完成");
-                                if !empty_ids.is_empty() {
-                                    engine.state.push_log("info", format!("发现 {} 块空地，自动种植中...", empty_ids.len()));
-                                    engine.auto_plant_empty_lands(&empty_ids).await;
+
+                                // Sell fruits after harvest (before planting to maximize gold)
+                                let config = engine.state.automation_config.read().clone();
+                                if config.auto_sell {
+                                    if let Err(e) = engine.warehouse.auto_sell_fruits().await {
+                                        log::warn!("Auto sell after farm check: {}", e);
+                                    }
+                                }
+
+                                let total = dead_ids.len() + empty_ids.len();
+                                if total > 0 {
+                                    engine.state.push_log("info", format!("发现 {} 块空地，自动种植中...", total));
+                                    engine.auto_plant_empty_lands(&dead_ids, &empty_ids).await;
                                 }
                             }
                             Err(e) => {
@@ -232,6 +251,7 @@ impl AutomationEngine {
                             }
                         }
                         state::emit_data_changed("farm");
+                        state::emit_data_changed("inventory");
                     }
                     _ = stop_rx.changed() => break,
                 }
@@ -295,17 +315,7 @@ impl AutomationEngine {
                             }
                         }
 
-                        if config.auto_sell {
-                            match engine.warehouse.auto_sell_fruits().await {
-                                Ok(_) => engine.state.push_log("info", "自动出售果实完成"),
-                                Err(e) => {
-                                    log::warn!("Auto sell error: {}", e);
-                                    engine.state.push_log("error", format!("自动出售出错: {}", e));
-                                }
-                            }
-                        }
                         state::emit_data_changed("tasks");
-                        state::emit_data_changed("inventory");
                     }
                     _ = stop_rx.changed() => break,
                 }
@@ -376,14 +386,19 @@ impl AutomationEngine {
                                     if now.duration_since(last_farm_check) >= debounce && engine.state.is_logged_in() {
                                         last_farm_check = now;
                                         match engine.farm.auto_check_farm().await {
-                                            Ok(empty_ids) => {
-                                                if !empty_ids.is_empty() {
-                                                    engine.auto_plant_empty_lands(&empty_ids).await;
+                                            Ok((dead_ids, empty_ids)) => {
+                                                let config = engine.state.automation_config.read().clone();
+                                                if config.auto_sell {
+                                                    let _ = engine.warehouse.auto_sell_fruits().await;
+                                                }
+                                                if !dead_ids.is_empty() || !empty_ids.is_empty() {
+                                                    engine.auto_plant_empty_lands(&dead_ids, &empty_ids).await;
                                                 }
                                             }
                                             Err(e) => log::warn!("Push-triggered farm check failed: {}", e),
                                         }
                                         state::emit_data_changed("farm");
+                                        state::emit_data_changed("inventory");
                                     }
                                 }
                                 NetworkEvent::Kickout { reason } => {
