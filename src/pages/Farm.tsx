@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
+import { useMinLoading } from "../hooks/useMinLoading";
 import * as api from "../api";
 
 // --- Types ---
@@ -200,7 +201,7 @@ function LandCard({ land }: { land: LandView }) {
 
 export default function FarmPage() {
   const [farm, setFarm] = useState<FarmView | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useMinLoading();
   const [busy, setBusy] = useState<string | null>(null);
   const { toast } = useToast();
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);

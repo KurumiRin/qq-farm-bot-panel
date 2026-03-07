@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
+import { useMinLoading } from "../hooks/useMinLoading";
 import * as api from "../api";
 
 interface FriendView {
@@ -49,14 +50,14 @@ const VISIT_DEBOUNCE_MS = 2000;
 
 export default function FriendsPage() {
   const [data, setData] = useState<FriendsData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useMinLoading();
   const [busy, setBusy] = useState<number | null>(null);
   const [filter, _setFilter] = useState<Filter>("all");
   const [filterKey, setFilterKey] = useState(0);
   const [visited, setVisited] = useState<Set<number>>(new Set());
   const orderRef = useRef<number[]>([]);
-  const visitDebounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const autoRefreshRef = useRef<ReturnType<typeof setTimeout>>();
+  const visitDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { toast } = useToast();
 
   const setFilter = (f: Filter) => {
