@@ -67,6 +67,16 @@
     animation: page-enter 0.2s ease-out;
   }
 
+  /* List item fade-in */
+  @keyframes list-item-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-list-item {
+    animation: list-item-in 0.2s ease-out both;
+  }
+
   /* Tab slide animations */
   @keyframes slide-left {
     from {
