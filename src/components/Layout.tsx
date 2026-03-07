@@ -12,7 +12,15 @@ import {
   Circle,
   PlugZap,
   X,
+  Coins,
 } from "lucide-react";
+import { getLevelProgress } from "../data/levelExp";
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return n.toLocaleString();
+}
 import { lazy, Suspense, useCallback, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatus } from "../hooks/useStatus";
@@ -203,16 +211,37 @@ export default function Layout() {
         {status?.user && status.user.gid !== 0 && (
           <div className="mx-3 mb-3 rounded-lg bg-surface-bright/70 px-3 py-2.5">
             <div className="flex items-center gap-2.5">
-              <div className="size-8 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-primary-700">
-                  {status.user.name.charAt(0)}
-                </span>
+              <div className="size-8 rounded-full bg-primary-100 flex items-center justify-center shrink-0 overflow-hidden">
+                {status.user.avatar_url ? (
+                  <img src={status.user.avatar_url} alt="" className="size-8 rounded-full object-cover" />
+                ) : (
+                  <span className="text-xs font-bold text-primary-700">
+                    {status.user.name.charAt(0)}
+                  </span>
+                )}
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{status.user.name}</p>
-                <p className="text-[11px] text-on-surface-muted">
-                  Lv.{status.user.level} · {status.user.gold.toLocaleString()} 金币
-                </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-medium truncate">{status.user.name}</span>
+                  <span className="text-[10px] text-on-surface-muted shrink-0">Lv.{status.user.level}</span>
+                </div>
+                <div className="flex items-center gap-0.5 text-[11px] text-on-surface-muted">
+                  <Coins className="size-3 text-yellow-500" />
+                  <span>{formatCompact(status.user.gold)}</span>
+                </div>
+                {(() => {
+                  const { ratio, current, needed } = getLevelProgress(status.user.level, status.user.exp);
+                  return (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-surface overflow-hidden">
+                        <div className="h-full rounded-full bg-primary-400 transition-all" style={{ width: `${ratio * 100}%` }} />
+                      </div>
+                      <span className="text-[9px] text-on-surface-muted/60 shrink-0 tabular-nums">
+                        {formatCompact(current)}/{formatCompact(needed)}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
