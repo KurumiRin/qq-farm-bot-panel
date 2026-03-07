@@ -76,10 +76,10 @@ impl WarehouseService {
             None => return Ok(()),
         };
 
-        // Fruit IDs are typically > 2000 and < 80000
+        // Fruit IDs: 40000+ range (type 6)
         let fruits: Vec<corepb::Item> = items
             .into_iter()
-            .filter(|item| item.id > 2000 && item.id < 80000 && item.count > 0)
+            .filter(|item| item.id >= 40000 && item.count > 0)
             .collect();
 
         if fruits.is_empty() {

@@ -92,17 +92,20 @@ pub fn start(
                     // Acquire connect lock to prevent concurrent connection attempts
                     let _connect_guard = CONNECT_LOCK.lock().await;
 
-                    // Dedup: skip if same code was used recently (check AFTER acquiring lock)
-                    let is_dup = {
-                        let guard = last_code.lock().unwrap();
-                        matches!(&*guard, Some((prev, ts)) if prev == &code && ts.elapsed().as_secs() < DEDUP_WINDOW_SECS)
-                    };
-                    if is_dup {
-                        log::info!("Skipping duplicate code from {}", addr);
-                        app_state.push_log("info", format!("跳过重复 code (来自 {})", addr));
-                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true,\"skipped\":true}";
-                        let _ = writer.write_all(resp.as_bytes()).await;
-                        return;
+                    // Dedup: only skip if already logged in AND same code was used recently
+                    let is_logged_in = app_state.is_logged_in();
+                    if is_logged_in {
+                        let is_dup = {
+                            let guard = last_code.lock().unwrap();
+                            matches!(&*guard, Some((prev, ts)) if prev == &code && ts.elapsed().as_secs() < DEDUP_WINDOW_SECS)
+                        };
+                        if is_dup {
+                            log::debug!("Skipping duplicate code (already logged in) from {}", addr);
+                            app_state.push_log("info", format!("已登录，跳过重复 code (来自 {})", addr));
+                            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true,\"skipped\":true}";
+                            let _ = writer.write_all(resp.as_bytes()).await;
+                            return;
+                        }
                     }
 
                     // Record code IMMEDIATELY for dedup (before connecting)
