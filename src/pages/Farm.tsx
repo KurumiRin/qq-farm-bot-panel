@@ -205,7 +205,7 @@ export default function FarmPage() {
       const res = (await api.getAllLands()) as FarmView;
       setFarm(res);
     } catch (e) {
-      console.error("Failed to load lands:", e);
+      if (String(e) !== "Not connected") console.error("Failed to load lands:", e);
     } finally {
       setLoading(false);
     }

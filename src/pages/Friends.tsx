@@ -82,7 +82,7 @@ export default function FriendsPage() {
       const res = (await api.getFriends()) as FriendsData;
       setData({ ...res, friends: stabilize(res.friends) });
     } catch (e) {
-      console.error("Failed to load friends:", e);
+      if (String(e) !== "Not connected") console.error("Failed to load friends:", e);
     } finally {
       setLoading(false);
     }

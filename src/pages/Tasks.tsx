@@ -248,7 +248,7 @@ export default function TasksPage() {
       const res = (await api.getTasks()) as TasksData;
       setData(res);
     } catch (e) {
-      console.error("Failed to load tasks:", e);
+      if (String(e) !== "Not connected") console.error("Failed to load tasks:", e);
     } finally {
       setLoading(false);
     }

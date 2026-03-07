@@ -192,7 +192,7 @@ export default function SettingsPage() {
       const c = await api.getAutomationConfig();
       setConfig(c);
     } catch (e) {
-      console.error("Failed to load config:", e);
+      if (String(e) !== "Not connected") console.error("Failed to load config:", e);
     } finally {
       setLoading(false);
     }

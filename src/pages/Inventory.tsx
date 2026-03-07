@@ -112,16 +112,12 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [selling, setSelling] = useState(false);
   const [tab, setTab] = useState<string>("all");
-  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
-  const prevTabRef = useRef(tab);
+  const [tabKey, setTabKey] = useState(0);
   const { toast } = useToast();
 
   const handleSetTab = useCallback((newTab: string) => {
-    const oldIdx = TABS.indexOf(prevTabRef.current as typeof TABS[number]);
-    const newIdx = TABS.indexOf(newTab as typeof TABS[number]);
-    setSlideDir(newIdx > oldIdx ? "left" : "right");
-    prevTabRef.current = newTab;
     setTab(newTab);
+    setTabKey((k) => k + 1);
   }, []);
 
   const fetchBag = useCallback(async () => {
@@ -130,7 +126,7 @@ export default function InventoryPage() {
       const res = (await api.getBag()) as BagView;
       setBag(res);
     } catch (e) {
-      console.error("Failed to load bag:", e);
+      if (String(e) !== "Not connected") console.error("Failed to load bag:", e);
     } finally {
       setLoading(false);
     }
@@ -210,7 +206,7 @@ export default function InventoryPage() {
       {/* Tabs */}
       <TabBar tabs={TABS} tab={tab} setTab={handleSetTab} items={items} bag={bag} />
 
-      <div key={tab} className={slideDir === "left" ? "animate-slide-left" : "animate-slide-right"}>
+      <div key={tabKey}>
       {filtered.length === 0 && !loading ? (
         <EmptyState
           icon={<Package className="size-10" />}
@@ -227,7 +223,8 @@ export default function InventoryPage() {
             return (
               <div
                 key={`${item.id}-${idx}`}
-                className="rounded-lg border border-border bg-surface p-2 flex flex-col items-center gap-1"
+                className="animate-list-item rounded-lg border border-border bg-surface p-2 flex flex-col items-center gap-1"
+                style={{ animationDelay: `${Math.min(idx * 15, 300)}ms` }}
               >
                 <div className="size-10 flex items-center justify-center">
                   {seedId > 0 ? (

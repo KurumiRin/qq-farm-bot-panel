@@ -668,7 +668,14 @@ pub async fn visit_and_act_friend(
 
     let visit = engine.friend().visit_farm(gid).await.map_err(|e| e.to_string())?;
 
-    let mut steal_ids = Vec::new();
+    struct StealInfo {
+        land_id: i64,
+        name: String,
+        fruit_num: i64,
+        seed_id: i64,
+    }
+
+    let mut steal_infos: Vec<StealInfo> = Vec::new();
     let mut dry_ids = Vec::new();
     let mut weed_ids = Vec::new();
     let mut insect_ids = Vec::new();
@@ -684,7 +691,12 @@ pub async fn visit_and_act_friend(
                 .unwrap_or(crate::config::PlantPhase::Unknown);
 
             if phase == crate::config::PlantPhase::Mature && p.stealable && !p.stealers.contains(&my_gid) {
-                steal_ids.push(land.id);
+                steal_infos.push(StealInfo {
+                    land_id: land.id,
+                    name: p.name.clone(),
+                    fruit_num: p.fruit_num,
+                    seed_id: p.id,
+                });
             }
             if p.dry_num > 0 { dry_ids.push(land.id); }
             if !p.weed_owners.is_empty() { weed_ids.push(land.id); }
@@ -694,9 +706,41 @@ pub async fn visit_and_act_friend(
 
     let mut actions = Vec::new();
 
-    if !steal_ids.is_empty() {
-        match engine.friend().steal(gid, steal_ids.clone()).await {
-            Ok(_) => actions.push(format!("偷菜 {}块", steal_ids.len())),
+    if !steal_infos.is_empty() {
+        let steal_ids: Vec<i64> = steal_infos.iter().map(|s| s.land_id).collect();
+        match engine.friend().steal(gid, steal_ids).await {
+            Ok(reply) => {
+                // Aggregate per crop: name -> (total_stolen, fruit_price)
+                let mut crop_map: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+                for info in &steal_infos {
+                    let stolen = reply.land.iter()
+                        .find(|l| l.id == info.land_id)
+                        .and_then(|l| l.plant.as_ref())
+                        .map(|p| (info.fruit_num - p.fruit_num).max(0))
+                        .unwrap_or(info.fruit_num);
+                    let price = crate::plant_econ::get_plant_econ(info.seed_id)
+                        .map(|e| e.fruit_price)
+                        .unwrap_or(0);
+                    let entry = crop_map.entry(info.name.clone()).or_insert((0, price));
+                    entry.0 += stolen;
+                }
+                let details: Vec<String> = crop_map.iter()
+                    .filter(|(_, (count, _))| *count > 0)
+                    .map(|(name, (count, price))| {
+                        let value = count * price;
+                        if value > 0 {
+                            format!("{}x{} ≈{}金", name, count, value)
+                        } else {
+                            format!("{}x{}", name, count)
+                        }
+                    })
+                    .collect();
+                if details.is_empty() {
+                    actions.push("偷菜 0".into());
+                } else {
+                    actions.push(format!("偷 {}", details.join("、")));
+                }
+            }
             Err(e) => log::warn!("Steal failed: {}", e),
         }
     }
