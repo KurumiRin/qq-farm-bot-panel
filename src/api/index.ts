@@ -85,5 +85,8 @@ export const getLogs = (since?: number) =>
 export const clearLogs = () => invoke<void>("clear_logs");
 
 // System
+export const getLoginCode = () =>
+  invoke<string | null>("get_login_code");
+
 export const restartCodeReceiver = () =>
   invoke<void>("restart_code_receiver");

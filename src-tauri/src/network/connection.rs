@@ -42,7 +42,7 @@ pub struct NetworkManager {
     pending: Arc<DashMap<i64, PendingCallback>>,
     ws_sink: Arc<Mutex<Option<WsSink>>>,
     connected: AtomicBool,
-    event_tx: mpsc::UnboundedSender<NetworkEvent>,
+    event_tx: parking_lot::Mutex<mpsc::UnboundedSender<NetworkEvent>>,
     event_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<NetworkEvent>>>>,
     /// Incremented on disconnect to cancel in-flight auto-reconnect
     reconnect_generation: AtomicI64,
@@ -58,14 +58,14 @@ impl NetworkManager {
             pending: Arc::new(DashMap::new()),
             ws_sink: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
-            event_tx,
+            event_tx: parking_lot::Mutex::new(event_tx),
             event_rx: Arc::new(Mutex::new(Some(event_rx))),
             reconnect_generation: AtomicI64::new(0),
         })
     }
 
     pub fn event_sender(&self) -> mpsc::UnboundedSender<NetworkEvent> {
-        self.event_tx.clone()
+        self.event_tx.lock().clone()
     }
 
     /// Take the event receiver (can only be called once).
@@ -298,6 +298,11 @@ impl NetworkManager {
         // Cancel all pending requests (dropping senders closes channels)
         self.pending.clear();
 
+        // Recreate event channel so the next AutomationEngine can take the receiver
+        let (new_tx, new_rx) = mpsc::unbounded_channel();
+        *self.event_tx.lock() = new_tx;
+        *self.event_rx.lock().await = Some(new_rx);
+
         self.state.set_connection_status(ConnectionStatus::Disconnected);
         log::info!("[WS] Disconnected");
     }
@@ -311,6 +316,9 @@ impl NetworkManager {
             >,
         >,
     ) {
+        // Capture generation at start so we can detect if a new connection replaced us
+        let my_generation = self.reconnect_generation.load(Ordering::Relaxed);
+
         let mut close_reason = "unknown";
         while let Some(msg_result) = stream.next().await {
             match msg_result {
@@ -329,6 +337,14 @@ impl NetworkManager {
                 }
                 _ => {}
             }
+        }
+
+        // If generation changed, a new connection has already been established.
+        // Do NOT touch shared state — the new connection owns it now.
+        let current_gen = self.reconnect_generation.load(Ordering::Relaxed);
+        if current_gen != my_generation {
+            log::info!("[WS] Old read_loop exiting (generation {} → {}), skipping cleanup", my_generation, current_gen);
+            return;
         }
 
         self.connected.store(false, Ordering::Relaxed);
@@ -426,14 +442,14 @@ impl NetworkManager {
                 self.state.push_log("error", format!("被踢出: {}", reason));
                 // Clear login code so we don't auto-reconnect after kick
                 *self.state.login_code.write() = None;
-                let _ = self.event_tx.send(NetworkEvent::Kickout { reason });
+                let _ = self.event_tx.lock().send(NetworkEvent::Kickout { reason });
             }
         } else if msg_type.contains("LandsNotify") {
             if let Ok(notify) = plantpb::LandsNotify::decode(event.body.as_slice()) {
                 let host_gid = notify.host_gid;
                 let my_gid = self.state.user_gid();
                 if !notify.lands.is_empty() && (host_gid == my_gid || host_gid == 0) {
-                    let _ = self.event_tx.send(NetworkEvent::LandsChanged {
+                    let _ = self.event_tx.lock().send(NetworkEvent::LandsChanged {
                         lands: notify.lands,
                     });
                 }
@@ -479,7 +495,7 @@ impl NetworkManager {
                         if basic.level > 0 { user.level = basic.level; }
                         if basic.gold > 0 { user.gold = basic.gold; }
                         if basic.exp > 0 { user.exp = basic.exp; }
-                        let _ = self.event_tx.send(NetworkEvent::BasicNotify {
+                        let _ = self.event_tx.lock().send(NetworkEvent::BasicNotify {
                             level: user.level,
                             gold: user.gold,
                             exp: user.exp,
@@ -489,7 +505,7 @@ impl NetworkManager {
                 }
             }
         } else if msg_type.contains("FriendApplicationReceived") {
-            let _ = self.event_tx.send(NetworkEvent::FriendApplicationReceived);
+            let _ = self.event_tx.lock().send(NetworkEvent::FriendApplicationReceived);
         } else if msg_type.contains("FriendAdded") {
             if let Ok(notify) = friendpb::FriendAddedNotify::decode(event.body.as_slice()) {
                 let names: Vec<String> = notify
@@ -501,12 +517,12 @@ impl NetworkManager {
                     })
                     .collect();
                 log::info!("New friends: {}", names.join(", "));
-                let _ = self.event_tx.send(NetworkEvent::FriendAdded { names });
+                let _ = self.event_tx.lock().send(NetworkEvent::FriendAdded { names });
             }
         } else if msg_type.contains("GoodsUnlock") {
-            let _ = self.event_tx.send(NetworkEvent::GoodsUnlockNotify);
+            let _ = self.event_tx.lock().send(NetworkEvent::GoodsUnlockNotify);
         } else if msg_type.contains("TaskInfo") {
-            let _ = self.event_tx.send(NetworkEvent::TaskInfoNotify);
+            let _ = self.event_tx.lock().send(NetworkEvent::TaskInfoNotify);
         }
     }
 }

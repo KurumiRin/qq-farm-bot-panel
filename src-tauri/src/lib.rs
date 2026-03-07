@@ -71,6 +71,7 @@ pub fn run() {
             commands::get_shop_info,
             commands::get_logs,
             commands::clear_logs,
+            commands::get_login_code,
             commands::restart_code_receiver,
         ])
         .run(tauri::generate_context!())

@@ -89,31 +89,44 @@ impl WarehouseService {
 
         let total_count: i64 = fruits.iter().map(|i| i.count).sum();
 
-        // Sell in batches of 15
+        // Sell in batches of 15, preserving uid for each item
         for chunk in fruits.chunks(15) {
             let batch: Vec<corepb::Item> = chunk
                 .iter()
-                .map(|item| corepb::Item {
-                    id: item.id,
-                    count: item.count,
-                    ..Default::default()
+                .map(|item| {
+                    let mut sell_item = corepb::Item {
+                        id: item.id,
+                        count: item.count,
+                        ..Default::default()
+                    };
+                    if item.uid > 0 {
+                        sell_item.uid = item.uid;
+                    }
+                    sell_item
                 })
                 .collect();
 
             let batch_len = batch.len();
+            log::info!("Selling batch: {:?}", batch.iter().map(|i| (i.id, i.count, i.uid)).collect::<Vec<_>>());
             match self.sell_items(batch).await {
-                Ok(_) => log::info!("Sold batch of {} fruit types", batch_len),
+                Ok(reply) => {
+                    log::info!("Sold batch of {} fruit types, got {} items back",
+                        batch_len, reply.get_items.len());
+                }
                 Err(e) => {
                     log::warn!("Batch sell failed, trying one by one: {}", e);
                     // Fallback: sell one by one, skip failures
                     for item in chunk {
-                        let single = vec![corepb::Item {
+                        let mut single_item = corepb::Item {
                             id: item.id,
                             count: item.count,
                             ..Default::default()
-                        }];
-                        if let Err(e) = self.sell_items(single).await {
-                            log::warn!("Skip unsellable item id={}: {}", item.id, e);
+                        };
+                        if item.uid > 0 {
+                            single_item.uid = item.uid;
+                        }
+                        if let Err(e) = self.sell_items(vec![single_item]).await {
+                            log::warn!("Skip unsellable item id={} uid={}: {}", item.id, item.uid, e);
                         }
                     }
                 }

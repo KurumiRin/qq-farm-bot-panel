@@ -195,6 +195,12 @@ pub async fn clear_logs(state: State<'_, TauriState>) -> Result<(), String> {
 
 // ========== Code Receiver Commands ==========
 
+/// Get current login code
+#[tauri::command]
+pub async fn get_login_code(state: State<'_, TauriState>) -> Result<Option<String>, String> {
+    Ok(state.app_state.login_code.read().clone())
+}
+
 /// Restart the code receiver HTTP server (e.g. after port conflict)
 #[tauri::command]
 pub async fn restart_code_receiver(state: State<'_, TauriState>) -> Result<(), String> {

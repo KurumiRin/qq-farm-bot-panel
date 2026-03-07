@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Save, RotateCw } from "lucide-react";
+import { Save, RotateCw, Copy, Check } from "lucide-react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
@@ -140,6 +140,43 @@ const defaultConfig: AutomationConfig = {
 
   friend_blacklist: [],
 };
+
+function LoginCodeRow() {
+  const [code, setCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    api.getLoginCode().then(setCode).catch(() => {});
+  }, []);
+
+  const handleCopy = async () => {
+    if (!code) return;
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium leading-tight">当前 Code</p>
+        <p className="text-xs text-on-surface-muted leading-tight mt-0.5 truncate font-mono">
+          {code || "未登录"}
+        </p>
+      </div>
+      {code && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          onClick={handleCopy}
+        >
+          {copied ? "已复制" : "复制"}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 // --- Main Component ---
 
@@ -551,27 +588,30 @@ export default function SettingsPage() {
         </Card>
         {/* ===== 系统 ===== */}
         <Card title="系统" collapsible>
-          <div className="flex items-center justify-between py-2.5">
-            <div>
-              <p className="text-[13px] font-medium leading-tight">Code 接收服务</p>
-              <p className="text-xs text-on-surface-muted leading-tight mt-0.5">
-                端口 7788，用于接收登录 code。端口被占用时可重启
-              </p>
+          <div className="divide-y divide-border">
+            <LoginCodeRow />
+            <div className="flex items-center justify-between py-2.5">
+              <div>
+                <p className="text-[13px] font-medium leading-tight">Code 接收服务</p>
+                <p className="text-xs text-on-surface-muted leading-tight mt-0.5">
+                  端口 7788，用于接收登录 code。端口被占用时可重启
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<RotateCw className="size-3.5" />}
+                onClick={async () => {
+                  try {
+                    await api.restartCodeReceiver();
+                  } catch (e) {
+                    console.error("Failed to restart code receiver:", e);
+                  }
+                }}
+              >
+                重启
+              </Button>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<RotateCw className="size-3.5" />}
-              onClick={async () => {
-                try {
-                  await api.restartCodeReceiver();
-                } catch (e) {
-                  console.error("Failed to restart code receiver:", e);
-                }
-              }}
-            >
-              重启
-            </Button>
           </div>
         </Card>
       </div>
