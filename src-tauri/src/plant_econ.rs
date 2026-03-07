@@ -20,20 +20,33 @@ impl PlantEcon {
     /// Net profit = income - seed_cost
     /// For 2-season: income * 2 - seed_price
     pub fn net_profit(&self) -> i64 {
+        self.net_profit_with_bonus(0)
+    }
+
+    /// Net profit with land yield bonus (percentage, e.g. 10 = +10%)
+    pub fn net_profit_with_bonus(&self, yield_bonus: i64) -> i64 {
+        let fruit = self.fruit_count * (100 + yield_bonus) / 100;
+        let income = fruit * self.fruit_price;
         if self.seasons >= 2 {
-            self.gold_income() * 2 - self.seed_price
+            income * 2 - self.seed_price
         } else {
-            self.gold_income() - self.seed_price
+            income - self.seed_price
         }
     }
 
     /// Total exp from one full growth cycle
     /// For 2-season: exp * 2
     pub fn total_exp(&self) -> i64 {
+        self.total_exp_with_bonus(0)
+    }
+
+    /// Total exp with land exp bonus (percentage, e.g. 10 = +10%)
+    pub fn total_exp_with_bonus(&self, exp_bonus: i64) -> i64 {
+        let base = self.exp * (100 + exp_bonus) / 100;
         if self.seasons >= 2 {
-            self.exp * 2
+            base * 2
         } else {
-            self.exp
+            base
         }
     }
 }

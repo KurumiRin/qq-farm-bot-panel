@@ -70,6 +70,7 @@ pub fn run() {
             commands::claim_all_tasks,
             commands::get_shop_info,
             commands::get_logs,
+            commands::clear_logs,
             commands::restart_code_receiver,
         ])
         .run(tauri::generate_context!())

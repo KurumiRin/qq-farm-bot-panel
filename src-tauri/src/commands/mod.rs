@@ -186,6 +186,13 @@ pub async fn get_logs(
     Ok(state.app_state.get_logs(since))
 }
 
+/// Clear all logs
+#[tauri::command]
+pub async fn clear_logs(state: State<'_, TauriState>) -> Result<(), String> {
+    state.app_state.clear_logs();
+    Ok(())
+}
+
 // ========== Code Receiver Commands ==========
 
 /// Restart the code receiver HTTP server (e.g. after port conflict)
@@ -328,6 +335,17 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, Str
 
             let seed_id = plant.id - 1_000_000;
             let econ = crate::plant_econ::get_plant_econ(seed_id);
+            // Log buff values for debugging (first land only)
+            if lands.is_empty() {
+                if let Some(buff) = &land.buff {
+                    log::debug!("Land #{} (level {}) buff: yield_bonus={}, exp_bonus={}, time_reduction={}",
+                        land.id, land.level, buff.plant_yield_bonus, buff.plant_exp_bonus, buff.planting_time_reduction);
+                }
+            }
+            // Buff values are in per-ten-thousand (万分比): 1000 = 10%
+            let (yield_pct, exp_pct) = land.buff.as_ref()
+                .map(|b| (b.plant_yield_bonus / 100, b.plant_exp_bonus / 100))
+                .unwrap_or((0, 0));
             lands.push(LandView {
                 id: land.id, unlocked: true, level: land.level, max_level: land.max_level,
                 status: status.into(), seed_id, seed_name: plant.name.clone(),
@@ -335,8 +353,8 @@ pub async fn get_all_lands(state: State<'_, TauriState>) -> Result<FarmView, Str
                 mature_in_sec, total_grow_sec: plant.grow_sec,
                 fruit_num: plant.fruit_num,
                 need_water, need_weed, need_insect,
-                est_gold: econ.map(|e| e.net_profit()).unwrap_or(0),
-                est_exp: econ.map(|e| e.total_exp()).unwrap_or(0),
+                est_gold: econ.map(|e| e.net_profit_with_bonus(yield_pct)).unwrap_or(0),
+                est_exp: econ.map(|e| e.total_exp_with_bonus(exp_pct)).unwrap_or(0),
                 seasons: econ.map(|e| e.seasons).unwrap_or(1),
             });
         } else {
@@ -607,9 +625,11 @@ pub async fn get_friends(state: State<'_, TauriState>) -> Result<FriendsView, St
         .await
         .map_err(|e| e.to_string())?;
 
+    let my_gid = state.app_state.user.read().gid;
     let friends = reply
         .game_friends
         .iter()
+        .filter(|f| f.gid != my_gid && f.name != "小小农夫" && f.remark != "小小农夫")
         .map(|f| {
             let plant = f.plant.as_ref();
             FriendView {
@@ -727,6 +747,8 @@ pub struct BagView {
     pub fruit_count: usize,
     pub fertilizer_count: usize,
     pub other_count: usize,
+    pub normal_fert_secs: i64,
+    pub organic_fert_secs: i64,
 }
 
 fn categorize_item(id: i64) -> &'static str {
@@ -781,7 +803,22 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
     let fertilizer_count = items.iter().filter(|i| i.category == "fertilizer").count();
     let other_count = items.iter().filter(|i| i.category == "other").count();
 
-    Ok(BagView { items, currencies, seed_count, fruit_count, fertilizer_count, other_count })
+    // Calculate total fertilizer time in seconds
+    let (mut normal_fert_secs, mut organic_fert_secs) = (0i64, 0i64);
+    for item in raw_items.iter().filter(|i| i.count > 0) {
+        let hours = match item.id {
+            80001 => 1, 80002 => 4, 80003 => 8, 80004 => 12,
+            _ => 0,
+        };
+        normal_fert_secs += hours * 3600 * item.count;
+        let hours = match item.id {
+            80011 => 1, 80012 => 4, 80013 => 8, 80014 => 12,
+            _ => 0,
+        };
+        organic_fert_secs += hours * 3600 * item.count;
+    }
+
+    Ok(BagView { items, currencies, seed_count, fruit_count, fertilizer_count, other_count, normal_fert_secs, organic_fert_secs })
 }
 
 /// Manually sell all fruits
@@ -889,17 +926,17 @@ pub async fn get_tasks(state: State<'_, TauriState>) -> Result<TasksView, String
 
     let info = reply.task_info.unwrap_or_default();
 
-    // Merge all tasks and re-categorize by task_type
+    // Merge all tasks, deduplicate by ID, and re-categorize by task_type
     // task_type 1 = growth, 2 = daily, others = misc
-    let all_tasks: Vec<_> = info.growth_tasks.iter()
-        .chain(info.daily_tasks.iter())
-        .chain(info.tasks.iter())
-        .collect();
-
+    let mut seen = std::collections::HashSet::new();
     let mut growth_tasks = Vec::new();
     let mut daily_tasks = Vec::new();
     let mut tasks = Vec::new();
-    for task in &all_tasks {
+    for task in info.growth_tasks.iter()
+        .chain(info.daily_tasks.iter())
+        .chain(info.tasks.iter())
+    {
+        if !seen.insert(task.id) { continue; }
         let view = make_task_view(task);
         match task.task_type {
             1 => growth_tasks.push(view),
