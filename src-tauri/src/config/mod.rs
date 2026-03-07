@@ -11,6 +11,8 @@ pub const FRIEND_CHECK_INTERVAL_MS: u64 = 120_000;
 pub const REQUEST_TIMEOUT_MS: u64 = 10_000;
 pub const RECONNECT_DELAY_MS: u64 = 5_000;
 pub const HEARTBEAT_MISS_THRESHOLD_MS: u64 = 60_000;
+/// Force reconnect after this many consecutive heartbeat failures
+pub const HEARTBEAT_MAX_MISS: u32 = 2;
 
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13)";
 pub const ORIGIN: &str = "https://gate-obt.nqf.qq.com";
@@ -223,7 +225,7 @@ impl Default for AutomationConfig {
             auto_land_upgrade: true,
             auto_farm_push: true,
 
-            auto_sell: true,
+            auto_sell: false,
             auto_claim_tasks: true,
             auto_claim_emails: true,
             auto_free_gifts: true,

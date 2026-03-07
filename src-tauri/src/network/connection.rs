@@ -267,19 +267,49 @@ impl NetworkManager {
         Ok(())
     }
 
-    /// Start heartbeat loop
+    /// Start heartbeat loop with dead-connection detection.
+    /// If heartbeat fails consecutively, clear pending requests and force reconnect.
     pub fn start_heartbeat(self: &Arc<Self>) {
         let self_clone = Arc::clone(self);
+        let generation = self.reconnect_generation.load(Ordering::Relaxed);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(std::time::Duration::from_millis(config::HEARTBEAT_INTERVAL_MS));
+            let mut miss_count: u32 = 0;
             loop {
                 interval.tick().await;
                 if !self_clone.is_connected() {
                     break;
                 }
-                if let Err(e) = self_clone.send_heartbeat().await {
-                    log::warn!("Heartbeat failed: {}", e);
+                // Abort if generation changed (new connection replaced us)
+                if self_clone.reconnect_generation.load(Ordering::Relaxed) != generation {
+                    break;
+                }
+                match self_clone.send_heartbeat().await {
+                    Ok(_) => { miss_count = 0; }
+                    Err(e) => {
+                        miss_count += 1;
+                        log::warn!("Heartbeat failed ({}/{}): {}", miss_count, config::HEARTBEAT_MAX_MISS, e);
+                        if miss_count >= config::HEARTBEAT_MAX_MISS {
+                            log::error!("Heartbeat missed {} times, connection is dead. Forcing reconnect.", miss_count);
+                            self_clone.state.push_log("warn", format!(
+                                "心跳连续 {} 次无响应，连接可能已断开，正在清理...", miss_count
+                            ));
+                            // Clear all pending requests so they fail immediately
+                            // instead of waiting for timeout
+                            for entry in self_clone.pending.iter() {
+                                log::debug!("Clearing pending request seq={}", entry.key());
+                            }
+                            self_clone.pending.clear();
+                            // Force close the sink to break the read_loop,
+                            // which will trigger auto-reconnect
+                            self_clone.connected.store(false, Ordering::Relaxed);
+                            if let Some(mut sink) = self_clone.ws_sink.lock().await.take() {
+                                let _ = sink.close().await;
+                            }
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -486,8 +516,9 @@ impl NetworkManager {
                     }
                 }
                 if changed {
+                    // emit_status is sufficient — gold/exp/coupon are shown via
+                    // UserState, no need to trigger a full bag refetch.
                     self.state.emit_status();
-                    crate::state::emit_data_changed("inventory");
                 }
             }
         } else if msg_type.contains("BasicNotify") {
