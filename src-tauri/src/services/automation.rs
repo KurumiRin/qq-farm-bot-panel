@@ -93,6 +93,114 @@ impl AutomationEngine {
         self.network.is_connected()
     }
 
+    /// Smart planting: find best seed (from bag or shop), buy if needed, plant
+    pub async fn auto_plant_empty_lands(&self, empty_ids: &[i64]) {
+        if empty_ids.is_empty() {
+            return;
+        }
+        let config = self.state.automation_config.read().clone();
+        let need = empty_ids.len() as i64;
+
+        // Sell fruits first to maximize gold (only if auto_sell is enabled)
+        if config.auto_sell {
+            if let Err(e) = self.warehouse.auto_sell_fruits().await {
+                log::warn!("Auto sell before planting failed: {}", e);
+            } else {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        }
+
+        // Get bag and shop data
+        let bag = match self.warehouse.get_bag().await {
+            Ok(b) => b,
+            Err(e) => { log::warn!("Get bag failed: {}", e); return; }
+        };
+        let bag_items = bag.item_bag.as_ref().map(|b| &b.items[..]).unwrap_or(&[]);
+
+        let shop = match self.shop.get_shop_info(2).await {
+            Ok(s) => s,
+            Err(e) => { log::warn!("Get shop failed: {}", e); return; }
+        };
+        let mut unlocked_seeds: Vec<_> = shop.goods_list.iter()
+            .filter(|g| g.unlocked)
+            .collect();
+        unlocked_seeds.sort_by(|a, b| b.price.cmp(&a.price));
+
+        let gold = self.state.user.read().gold;
+        let bag_count = |seed_id: i64| -> i64 {
+            bag_items.iter().find(|i| i.id == seed_id).map(|i| i.count).unwrap_or(0)
+        };
+
+        // Try preferred seed from bag
+        if let Some(pref_id) = config.preferred_seed_id {
+            if bag_count(pref_id) >= need {
+                let ok = self.plant_one_by_one(pref_id, empty_ids).await;
+                log::info!("Auto-planted preferred seed (from bag) x{}", ok);
+                return;
+            }
+        }
+
+        // Try any seed from bag (highest price first)
+        for goods in &unlocked_seeds {
+            if bag_count(goods.item_id) >= need {
+                let ok = self.plant_one_by_one(goods.item_id, empty_ids).await;
+                log::info!("Auto-planted (from bag) x{}", ok);
+                return;
+            }
+        }
+
+        // Need to buy — try preferred first, then best affordable
+        let candidates: Vec<_> = if let Some(pref_id) = config.preferred_seed_id {
+            let mut v: Vec<_> = unlocked_seeds.iter()
+                .filter(|g| g.item_id == pref_id).copied().collect();
+            v.extend(unlocked_seeds.iter().filter(|g| g.item_id != pref_id).copied());
+            v
+        } else {
+            unlocked_seeds
+        };
+
+        for goods in &candidates {
+            let have = bag_count(goods.item_id);
+            let to_buy = (need - have).max(0);
+            if to_buy > 0 && goods.price * to_buy <= gold {
+                match self.shop.buy_goods(goods.id, to_buy, goods.price).await {
+                    Ok(buy_reply) => {
+                        let seed_id = buy_reply.get_items.first()
+                            .map(|item| item.id).filter(|&id| id > 0)
+                            .unwrap_or(goods.item_id);
+                        let ok = self.plant_one_by_one(seed_id, empty_ids).await;
+                        log::info!("Auto-planted (bought {} seeds, cost {}) x{}", to_buy, goods.price * to_buy, ok);
+                        return;
+                    }
+                    Err(e) => { log::warn!("Buy seed failed: {}", e); continue; }
+                }
+            }
+        }
+
+        log::warn!("Auto-plant failed: no affordable seeds (gold={})", gold);
+    }
+
+    /// Plant one land at a time with delay
+    async fn plant_one_by_one(&self, seed_id: i64, land_ids: &[i64]) -> usize {
+        let mut ok = 0;
+        for &land_id in land_ids {
+            let items = vec![crate::proto::plantpb::PlantItem {
+                seed_id,
+                land_ids: vec![land_id],
+                auto_slave: false,
+            }];
+            if let Err(e) = self.farm.plant(items).await {
+                log::warn!("Plant land#{} failed: {}", land_id, e);
+            } else {
+                ok += 1;
+            }
+            if land_ids.len() > 1 {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+        ok
+    }
+
     /// Start all automation loops
     pub async fn start(self: Arc<Self>) {
         log::info!("Starting automation engine");
@@ -111,7 +219,13 @@ impl AutomationEngine {
                         if !engine.state.is_logged_in() { continue; }
                         engine.state.push_log("info", "开始巡田检查");
                         match engine.farm.auto_check_farm().await {
-                            Ok(_) => engine.state.push_log("info", "巡田检查完成"),
+                            Ok(empty_ids) => {
+                                engine.state.push_log("info", "巡田检查完成");
+                                if !empty_ids.is_empty() {
+                                    engine.state.push_log("info", format!("发现 {} 块空地，自动种植中...", empty_ids.len()));
+                                    engine.auto_plant_empty_lands(&empty_ids).await;
+                                }
+                            }
                             Err(e) => {
                                 log::warn!("Farm check error: {}", e);
                                 engine.state.push_log("error", format!("巡田出错: {}", e));
@@ -261,8 +375,13 @@ impl AutomationEngine {
                                     let now = tokio::time::Instant::now();
                                     if now.duration_since(last_farm_check) >= debounce && engine.state.is_logged_in() {
                                         last_farm_check = now;
-                                        if let Err(e) = engine.farm.auto_check_farm().await {
-                                            log::warn!("Push-triggered farm check failed: {}", e);
+                                        match engine.farm.auto_check_farm().await {
+                                            Ok(empty_ids) => {
+                                                if !empty_ids.is_empty() {
+                                                    engine.auto_plant_empty_lands(&empty_ids).await;
+                                                }
+                                            }
+                                            Err(e) => log::warn!("Push-triggered farm check failed: {}", e),
                                         }
                                         state::emit_data_changed("farm");
                                     }

@@ -44,7 +44,7 @@ impl FarmService {
         let req = plantpb::HarvestRequest {
             land_ids,
             host_gid,
-            is_all: false,
+            is_all: true,
         };
         let reply_bytes = self
             .network
@@ -200,7 +200,8 @@ impl FarmService {
     // ========== Automation helpers ==========
 
     /// Check own farm and perform automated actions
-    pub async fn auto_check_farm(&self) -> AppResult<()> {
+    /// Returns list of empty land IDs that need planting (caller handles smart planting)
+    pub async fn auto_check_farm(&self) -> AppResult<Vec<i64>> {
         let config = self.state.automation_config.read().clone();
         let reply = self.get_all_lands().await?;
 
@@ -270,26 +271,6 @@ impl FarmService {
             let _ = self.insecticide(insect_ids, 0).await;
         }
 
-        // Plant on empty lands (one at a time, like the game client)
-        if config.auto_plant && !empty_ids.is_empty() {
-            if let Some(seed_id) = config.preferred_seed_id {
-                log::info!("Planting seed {} on {} lands", seed_id, empty_ids.len());
-                for &land_id in &empty_ids {
-                    let items = vec![plantpb::PlantItem {
-                        seed_id,
-                        land_ids: vec![land_id],
-                        auto_slave: false,
-                    }];
-                    if let Err(e) = self.plant(items).await {
-                        log::warn!("Plant land#{} failed: {}", land_id, e);
-                    }
-                    if empty_ids.len() > 1 {
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    }
-                }
-            }
-        }
-
-        Ok(())
+        Ok(if config.auto_plant { empty_ids } else { Vec::new() })
     }
 }
