@@ -457,7 +457,13 @@ async fn plant_one_by_one(
         }];
         match engine.farm().plant(items).await {
             Ok(_) => success += 1,
-            Err(e) => log::warn!("Plant land#{} failed: {}", land_id, e),
+            Err(e) => {
+                log::warn!("Plant land#{} failed: {}", land_id, e);
+                // Stop immediately on connection errors to avoid long hangs
+                if !engine.is_connected() {
+                    break;
+                }
+            }
         }
         if land_ids.len() > 1 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -840,13 +846,19 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
         if cat == "currency" {
             currencies.push(CurrencyView { id: item.id, count: item.count, name });
         } else {
-            let unit_price = if cat == "fruit" {
-                let seed_id = item.id - 20000;
-                crate::plant_econ::get_plant_econ(seed_id)
-                    .map(|p| p.fruit_price)
-                    .unwrap_or(0)
-            } else {
-                0
+            let unit_price = match cat {
+                "fruit" => {
+                    let seed_id = item.id - 20000;
+                    crate::plant_econ::get_plant_econ(seed_id)
+                        .map(|p| p.fruit_price)
+                        .unwrap_or(0)
+                }
+                "seed" => {
+                    crate::plant_econ::get_plant_econ(item.id)
+                        .map(|p| p.gold_income())
+                        .unwrap_or(0)
+                }
+                _ => 0,
             };
             items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into(), unit_price });
         }

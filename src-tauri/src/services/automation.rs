@@ -89,6 +89,10 @@ impl AutomationEngine {
         &self.vip
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.network.is_connected()
+    }
+
     /// Start all automation loops
     pub async fn start(self: Arc<Self>) {
         log::info!("Starting automation engine");

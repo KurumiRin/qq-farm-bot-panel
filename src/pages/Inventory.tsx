@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
-import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw, Coins, Ticket } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
+import { useIndicator } from "../hooks/useIndicator";
 import * as api from "../api";
 
 interface BagItemView {
@@ -61,27 +62,17 @@ function TabBar({
   items: BagItemView[];
   bag: BagView | null;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false });
   const activeIndex = tabs.indexOf(tab);
-
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container || activeIndex < 0) return;
-    const buttons = container.querySelectorAll<HTMLElement>("button");
-    const el = buttons[activeIndex];
-    if (!el) return;
-    setIndicator({ left: el.offsetLeft, width: el.offsetWidth, ready: true });
-  }, [activeIndex]);
+  const { containerRef, indicator } = useIndicator<HTMLDivElement>(activeIndex, "x");
 
   return (
     <div ref={containerRef} className="relative flex gap-0.5 rounded-lg bg-surface-bright/70 p-0.5">
       {/* Sliding indicator */}
       <div
         className={`absolute top-0.5 bottom-0.5 rounded-md bg-surface shadow-sm pointer-events-none ${
-          indicator.ready ? "transition-all duration-250 ease-in-out" : "opacity-0"
+          !indicator.ready ? "opacity-0" : indicator.animate ? "transition-all duration-250 ease-in-out" : ""
         }`}
-        style={{ left: indicator.left, width: indicator.width }}
+        style={{ left: indicator.offset, width: indicator.size }}
       />
       {tabs.map((t) => {
         const count =
@@ -177,8 +168,8 @@ export default function InventoryPage() {
       <PageHeader
         title="仓库"
         tags={[
-          { label: "金币", value: bag ? bag.currencies.find(c => c.id === 1 || c.id === 1001)?.count.toLocaleString() ?? "0" : "-", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-          { label: "点券", value: bag ? bag.currencies.find(c => c.id === 1002)?.count.toLocaleString() ?? "0" : "-", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+          { label: "", value: bag ? bag.currencies.find(c => c.id === 1 || c.id === 1001)?.count.toLocaleString() ?? "0" : "-", icon: <Coins className="size-3" />, cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+          { label: "", value: bag ? bag.currencies.find(c => c.id === 1002)?.count.toLocaleString() ?? "0" : "-", icon: <Ticket className="size-3" />, cls: "bg-purple-500/10 text-purple-700 dark:text-purple-400" },
         ]}
         actions={<>
           <Button
@@ -215,7 +206,7 @@ export default function InventoryPage() {
           description={tab === "all" ? "请先连接游戏服务器" : "当前分类下没有物品"}
         />
       ) : (
-        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" style={{ gridAutoRows: '1fr' }}>
           {filtered.map((item, idx) => {
             const catInfo = CATEGORY_LABELS[item.category] ?? CATEGORY_LABELS.other;
             const isSeed = item.category === "seed";
@@ -224,15 +215,15 @@ export default function InventoryPage() {
             return (
               <div
                 key={`${item.id}-${idx}`}
-                className="animate-list-item rounded-lg border border-border bg-surface p-2 flex flex-col items-center gap-1"
+                className="animate-list-item rounded-lg border border-border bg-surface p-1.5 flex items-center gap-2 h-full"
                 style={{ animationDelay: `${Math.min(idx * 10, 200)}ms` }}
               >
-                <div className="size-10 flex items-center justify-center">
+                <div className="shrink-0 size-9 flex items-center justify-center">
                   {seedId > 0 ? (
                     <img
                       src={`/seeds/${seedId}.png`}
                       alt=""
-                      className="size-10 object-contain"
+                      className="size-9 object-contain"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none";
                       }}
@@ -241,15 +232,17 @@ export default function InventoryPage() {
                     <catInfo.icon className={`size-5 ${catInfo.color}`} />
                   )}
                 </div>
-                <span className="text-[11px] font-medium text-center truncate w-full">
-                  {item.name}
-                </span>
-                <span className="text-xs font-bold text-primary-600">x{item.count}</span>
-                {item.unit_price > 0 && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400">
-                    {item.unit_price}g · {(item.count * item.unit_price).toLocaleString()}g
-                  </span>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[11px] font-medium truncate">{item.name}</span>
+                    <span className="text-[11px] font-bold text-primary-600 shrink-0">×{item.count}</span>
+                  </div>
+                  {!isSeed && item.unit_price > 0 && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                      <Coins className="size-2.5" />{(item.count * item.unit_price).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}

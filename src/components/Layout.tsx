@@ -13,9 +13,10 @@ import {
   PlugZap,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useRef, useState, useLayoutEffect } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatus } from "../hooks/useStatus";
+import { useIndicator } from "../hooks/useIndicator";
 import * as api from "../api";
 
 const DashboardPage = lazy(() => import("../pages/Dashboard"));
@@ -55,21 +56,12 @@ const pages: { path: string; component: React.LazyExoticComponent<React.Componen
 
 function NavList({ items }: { items: typeof navItems }) {
   const location = useLocation();
-  const navRef = useRef<HTMLElement>(null);
-  const [indicator, setIndicator] = useState({ top: 0, height: 0, ready: false });
 
   const activeIndex = items.findIndex(({ to }) =>
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to)
   );
 
-  useLayoutEffect(() => {
-    const nav = navRef.current;
-    if (!nav || activeIndex < 0) return;
-    const links = nav.querySelectorAll<HTMLElement>("a");
-    const el = links[activeIndex];
-    if (!el) return;
-    setIndicator({ top: el.offsetTop, height: el.offsetHeight, ready: true });
-  }, [activeIndex]);
+  const { containerRef: navRef, indicator } = useIndicator(activeIndex, "y");
 
   return (
     <nav ref={navRef} className="relative flex-1 px-3 space-y-0.5 overflow-y-auto">
@@ -77,9 +69,9 @@ function NavList({ items }: { items: typeof navItems }) {
       <div
         className={clsx(
           "absolute left-3 right-3 rounded-lg bg-primary-500 shadow-sm pointer-events-none",
-          indicator.ready ? "transition-all duration-300 ease-in-out" : "opacity-0"
+          !indicator.ready ? "opacity-0" : indicator.animate ? "transition-all duration-300 ease-in-out" : ""
         )}
-        style={{ top: indicator.top, height: indicator.height }}
+        style={{ top: indicator.offset, height: indicator.size }}
       />
       {items.map(({ to, icon: Icon, label }) => (
         <NavLink
