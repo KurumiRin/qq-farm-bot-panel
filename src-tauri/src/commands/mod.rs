@@ -632,7 +632,7 @@ pub async fn get_friends(state: State<'_, TauriState>) -> Result<FriendsView, St
         .map_err(|e| e.to_string())?;
 
     let my_gid = state.app_state.user.read().gid;
-    let friends = reply
+    let mut friends: Vec<FriendView> = reply
         .game_friends
         .iter()
         .filter(|f| f.gid != my_gid && f.name != "小小农夫" && f.remark != "小小农夫")
@@ -650,6 +650,19 @@ pub async fn get_friends(state: State<'_, TauriState>) -> Result<FriendsView, St
             }
         })
         .collect();
+
+    // Sort: stealable first, then other actionable, then idle
+    friends.sort_by(|a, b| {
+        let score = |f: &FriendView| -> i64 {
+            let mut s = 0;
+            if f.steal_count > 0 { s += 1000 + f.steal_count; }
+            if f.dry_count > 0 { s += 100; }
+            if f.weed_count > 0 { s += 100; }
+            if f.insect_count > 0 { s += 100; }
+            s
+        };
+        score(b).cmp(&score(a))
+    });
 
     Ok(FriendsView {
         friends,

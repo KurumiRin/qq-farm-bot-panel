@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Users, Scissors, Droplets, Leaf, Bug, RefreshCw, Zap } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
@@ -23,17 +23,22 @@ interface FriendsData {
   application_count: number;
 }
 
+const CACHE_MIN_MS = 10_000; // Don't re-fetch within 10s
+
 export default function FriendsPage() {
   const [data, setData] = useState<FriendsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
+  const lastFetchRef = useRef(0);
   const { toast } = useToast();
 
-  const fetchFriends = useCallback(async () => {
+  const fetchFriends = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastFetchRef.current < CACHE_MIN_MS) return;
     setLoading(true);
     try {
       const res = (await api.getFriends()) as FriendsData;
       setData(res);
+      lastFetchRef.current = Date.now();
     } catch (e) {
       console.error("Failed to load friends:", e);
     } finally {
@@ -42,7 +47,7 @@ export default function FriendsPage() {
   }, []);
 
   useEffect(() => {
-    fetchFriends();
+    fetchFriends(true);
   }, [fetchFriends]);
 
   const handleDataChanged = useCallback(
@@ -55,7 +60,7 @@ export default function FriendsPage() {
 
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
-      if (payload.connection === "LoggedIn") fetchFriends();
+      if (payload.connection === "LoggedIn") fetchFriends(true);
     },
     [fetchFriends]
   );
@@ -66,7 +71,7 @@ export default function FriendsPage() {
     try {
       const result = await api.visitAndActFriend(friend.gid);
       toast("success", `${friend.name}: ${result}`);
-      await fetchFriends();
+      await fetchFriends(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       toast("error", msg);
@@ -94,7 +99,7 @@ export default function FriendsPage() {
             size="sm"
             variant="ghost"
             icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
-            onClick={fetchFriends}
+            onClick={() => fetchFriends(true)}
             disabled={loading || busy !== null}
           >
             刷新
