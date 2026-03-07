@@ -25,3 +25,6 @@ dist-ssr
 
 # Local tools (may contain IP/secrets)
 tools/
+
+# Claude instructions (may contain sensitive info)
+CLAUDE.md
