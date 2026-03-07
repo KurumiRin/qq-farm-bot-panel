@@ -89,21 +89,17 @@ export default function FriendsPage() {
     }
   }, []);
 
-  // Schedule auto-refresh based on config interval
+  // Schedule auto-refresh based on config interval (cached to avoid extra requests)
+  const cachedIntervalRef = useRef<number>(295_000);
   const scheduleAutoRefresh = useCallback(() => {
     clearTimeout(autoRefreshRef.current);
-    // Use friend interval from config, default 5min, minus 10s
+    autoRefreshRef.current = setTimeout(() => {
+      fetchFriends().then(scheduleAutoRefresh);
+    }, cachedIntervalRef.current);
+    // Refresh interval from config in background (non-blocking)
     api.getAutomationConfig().then((config) => {
-      const intervalMs = Math.max((config.intervals.friend_min - 5) * 1000, 2_000);
-      autoRefreshRef.current = setTimeout(() => {
-        fetchFriends().then(scheduleAutoRefresh);
-      }, intervalMs);
-    }).catch(() => {
-      // Fallback: 5min
-      autoRefreshRef.current = setTimeout(() => {
-        fetchFriends().then(scheduleAutoRefresh);
-      }, 295_000);
-    });
+      cachedIntervalRef.current = Math.max((config.intervals.friend_min - 5) * 1000, 2_000);
+    }).catch(() => {});
   }, [fetchFriends]);
 
   // Initial fetch + start auto-refresh
@@ -163,7 +159,8 @@ export default function FriendsPage() {
         (f.steal_count > 0 || f.dry_count > 0 || f.weed_count > 0 || f.insect_count > 0)
     );
     if (actionable.length === 0) return;
-    for (const friend of actionable) {
+    for (let i = 0; i < actionable.length; i++) {
+      const friend = actionable[i];
       setBusy(friend.gid);
       try {
         const result = await api.visitAndActFriend(friend.gid);
@@ -172,6 +169,10 @@ export default function FriendsPage() {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         toast("error", `${friend.name}: ${msg}`);
+      }
+      // Small delay between friends to avoid server rate limiting
+      if (i < actionable.length - 1) {
+        await new Promise((r) => setTimeout(r, 300));
       }
     }
     setBusy(null);

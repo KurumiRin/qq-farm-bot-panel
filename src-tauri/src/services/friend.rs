@@ -111,7 +111,7 @@ impl FriendService {
         let req = plantpb::HarvestRequest {
             land_ids,
             host_gid,
-            is_all: false,
+            is_all: true,
         };
         let reply_bytes = self
             .network
@@ -164,6 +164,25 @@ impl FriendService {
             .await?;
         self.state.record_stat(|s| s.help_insects += 1);
         Ok(plantpb::InsecticideReply::decode(reply_bytes.as_slice())?)
+    }
+
+    /// Pre-check if an operation is allowed on a friend's farm
+    /// Operation IDs: 10005=除草, 10006=除虫, 10007=浇水, 10008=偷菜
+    async fn can_operate(&self, host_gid: i64, operation_id: i64) -> bool {
+        let req = plantpb::CheckCanOperateRequest {
+            host_gid,
+            operation_id,
+        };
+        match self
+            .network
+            .send_request(&codec::CHECK_CAN_OPERATE, req.encode_to_vec())
+            .await
+        {
+            Ok(bytes) => plantpb::CheckCanOperateReply::decode(bytes.as_slice())
+                .map(|r| r.can_operate)
+                .unwrap_or(true),
+            Err(_) => true, // fallback: don't block on pre-check failure
+        }
     }
 
     // ========== Automation ==========
@@ -242,18 +261,18 @@ impl FriendService {
                 }
             }
 
-            // Perform actions
-            if config.auto_steal && !steal_ids.is_empty() {
+            // Perform actions (with pre-check before each operation)
+            if config.auto_steal && !steal_ids.is_empty() && self.can_operate(friend.gid, 10008).await {
                 log::info!("Stealing from {} ({} lands)", friend.name, steal_ids.len());
                 let _ = self.steal(friend.gid, steal_ids).await;
             }
 
-            if config.auto_help_water && !dry_ids.is_empty() {
+            if config.auto_help_water && !dry_ids.is_empty() && self.can_operate(friend.gid, 10007).await {
                 log::info!("Watering {}'s farm ({} lands)", friend.name, dry_ids.len());
                 let _ = self.help_water(friend.gid, dry_ids).await;
             }
 
-            if config.auto_help_weed && !weed_ids.is_empty() {
+            if config.auto_help_weed && !weed_ids.is_empty() && self.can_operate(friend.gid, 10005).await {
                 log::info!(
                     "Removing weeds from {}'s farm ({} lands)",
                     friend.name,
@@ -262,7 +281,7 @@ impl FriendService {
                 let _ = self.help_weed_out(friend.gid, weed_ids).await;
             }
 
-            if config.auto_help_insecticide && !insect_ids.is_empty() {
+            if config.auto_help_insecticide && !insect_ids.is_empty() && self.can_operate(friend.gid, 10006).await {
                 log::info!(
                     "Removing insects from {}'s farm ({} lands)",
                     friend.name,

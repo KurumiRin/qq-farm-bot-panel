@@ -117,6 +117,12 @@ pub async fn connect_and_login(
     *state.engine.lock().await = Some(Arc::clone(&engine));
     engine.start().await;
 
+    // Notify frontend to load all page data now that we're logged in
+    crate::state::emit_data_changed("farm");
+    crate::state::emit_data_changed("friends");
+    crate::state::emit_data_changed("inventory");
+    crate::state::emit_data_changed("tasks");
+
     let user = app_state.user.read().clone();
     Ok(user)
 }
@@ -492,19 +498,19 @@ pub async fn auto_plant_empty(
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 
-    // Step 2: Check bag for existing seeds
+    // Step 2: Get bag and shop data
     let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
     let bag_items = bag.item_bag.as_ref().map(|b| &b.items[..]).unwrap_or(&[]);
 
-    // Step 3: Query seed shop (shop_id=2) for real-time seed data
     let shop = engine.shop().get_shop_info(2).await.map_err(|e| e.to_string())?;
     let mut unlocked_seeds: Vec<_> = shop.goods_list.iter()
         .filter(|g| g.unlocked)
         .collect();
-    // Sort by price descending so we try the most expensive (highest level) first
     unlocked_seeds.sort_by(|a, b| b.price.cmp(&a.price));
 
-    // Try preferred seed from bag first
+    let gold = state.app_state.user.read().gold;
+
+    // Step 3: Try preferred seed from bag first
     if let Some(pref_id) = preferred {
         if bag_items.iter().any(|i| i.id == pref_id && i.count >= need) {
             let ok = plant_one_by_one(&engine, pref_id, &land_ids).await?;
@@ -524,10 +530,7 @@ pub async fn auto_plant_empty(
         }
     }
 
-    // Step 4: Need to buy - find best affordable seed
-    let gold = state.app_state.user.read().gold;
-
-    // Helper: buy seed and plant
+    // Step 4: Need to buy — try preferred first, then best affordable
     let buy_and_plant = |goods_id: i64, seed_id: i64, to_buy: i64, price: i64| {
         let engine = Arc::clone(&engine);
         let land_ids = land_ids.clone();
@@ -535,18 +538,13 @@ pub async fn auto_plant_empty(
             log::info!("Buying goods_id={} num={} price={}", goods_id, to_buy, price);
             let buy_reply = engine.shop().buy_goods(goods_id, to_buy, price).await
                 .map_err(|e| format!("购买失败: {}", e))?;
-            // Use actual seed ID from buy reply if available
             let actual_seed_id = buy_reply.get_items.first()
-                .map(|item| item.id)
-                .filter(|&id| id > 0)
-                .unwrap_or(seed_id);
-            log::info!("Bought seed_id={}, planting on {} lands", actual_seed_id, land_ids.len());
+                .map(|item| item.id).filter(|&id| id > 0).unwrap_or(seed_id);
             let ok = plant_one_by_one(&engine, actual_seed_id, &land_ids).await?;
             Ok::<(i64, i64), String>((ok, price * to_buy))
         }
     };
 
-    // If preferred seed is set, try it first
     if let Some(pref_id) = preferred {
         if let Some(goods) = unlocked_seeds.iter().find(|g| g.item_id == pref_id) {
             let have = bag_items.iter().find(|i| i.id == pref_id).map(|i| i.count).unwrap_or(0);
@@ -560,7 +558,6 @@ pub async fn auto_plant_empty(
         }
     }
 
-    // Try highest-price unlocked seed that we can afford (descending by price)
     for goods in &unlocked_seeds {
         let have = bag_items.iter().find(|i| i.id == goods.item_id).map(|i| i.count).unwrap_or(0);
         let to_buy = (need - have).max(0);
@@ -571,7 +568,6 @@ pub async fn auto_plant_empty(
                 state.app_state.push_log("info", &msg);
                 return Ok(msg);
             }
-            // Have enough in bag already
             let ok = plant_one_by_one(&engine, goods.item_id, &land_ids).await?;
             let msg = format!("已种植 (背包已有) x{}", ok);
             state.app_state.push_log("info", &msg);
@@ -712,7 +708,16 @@ pub async fn visit_and_act_friend(
 
     let mut actions = Vec::new();
 
-    if !steal_infos.is_empty() {
+    // Pre-check if operation is allowed (server requires this before friend ops)
+    // Operation IDs: 10005=除草, 10006=除虫, 10007=浇水, 10008=偷菜
+    macro_rules! can_operate {
+        ($op_id:expr) => {
+            engine.farm().check_can_operate(gid, $op_id).await
+                .map(|r| r.can_operate).unwrap_or(true)
+        };
+    }
+
+    if !steal_infos.is_empty() && can_operate!(10008) {
         let steal_ids: Vec<i64> = steal_infos.iter().map(|s| s.land_id).collect();
         match engine.friend().steal(gid, steal_ids).await {
             Ok(reply) => {
@@ -750,19 +755,19 @@ pub async fn visit_and_act_friend(
             Err(e) => log::warn!("Steal failed: {}", e),
         }
     }
-    if !dry_ids.is_empty() {
+    if !dry_ids.is_empty() && can_operate!(10007) {
         match engine.friend().help_water(gid, dry_ids.clone()).await {
             Ok(_) => actions.push(format!("浇水 {}块", dry_ids.len())),
             Err(e) => log::warn!("Water failed: {}", e),
         }
     }
-    if !weed_ids.is_empty() {
+    if !weed_ids.is_empty() && can_operate!(10005) {
         match engine.friend().help_weed_out(gid, weed_ids.clone()).await {
             Ok(_) => actions.push(format!("除草 {}块", weed_ids.len())),
             Err(e) => log::warn!("Weed failed: {}", e),
         }
     }
-    if !insect_ids.is_empty() {
+    if !insect_ids.is_empty() && can_operate!(10006) {
         match engine.friend().help_insecticide(gid, insect_ids.clone()).await {
             Ok(_) => actions.push(format!("除虫 {}块", insect_ids.len())),
             Err(e) => log::warn!("Insecticide failed: {}", e),
@@ -847,17 +852,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
             currencies.push(CurrencyView { id: item.id, count: item.count, name });
         } else {
             let unit_price = match cat {
-                "fruit" => {
-                    let seed_id = item.id - 20000;
-                    crate::plant_econ::get_plant_econ(seed_id)
-                        .map(|p| p.fruit_price)
-                        .unwrap_or(0)
-                }
-                "seed" => {
-                    crate::plant_econ::get_plant_econ(item.id)
-                        .map(|p| p.gold_income())
-                        .unwrap_or(0)
-                }
+                "fruit" | "seed" => crate::item_prices::get_item_price(item.id),
                 _ => 0,
             };
             items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into(), unit_price });
