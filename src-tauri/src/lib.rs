@@ -6,6 +6,7 @@ mod commands;
 mod config;
 mod error;
 mod item_names;
+mod item_prices;
 mod network;
 mod plant_econ;
 mod proto;

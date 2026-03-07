@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git log --all --format=\"%H\" --grep=\"Co-Authored-By\" -i)",
+      "Bash(git filter-repo --message-callback 'import re; return re.sub\\(rb\"\"\\\\n\\\\s*Co-Authored-By:.*\\(?:\\\\n|$\\)\"\", b\"\"\"\", message, flags=re.IGNORECASE\\).rstrip\\(\\) + b\"\"\\\\n\"\"' --force)",
+      "Bash(npx tsc --noEmit --project /Users/rin/github/qq-farm-pilot/tsconfig.json)",
+      "Bash(cargo check --manifest-path /Users/rin/github/qq-farm-pilot/src-tauri/Cargo.toml)"
+    ]
+  }
+}

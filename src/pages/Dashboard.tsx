@@ -63,7 +63,6 @@ const infoItems = [
 export default function DashboardPage() {
   const { status } = useStatus();
   const [fert, setFert] = useState<FertInfo | null>(null);
-
   const fetchFert = useCallback(async () => {
     try {
       const bag = (await api.getBag()) as FertInfo;
@@ -81,7 +80,7 @@ export default function DashboardPage() {
     (scope: string) => { if (scope === "inventory") fetchFert(); },
     [fetchFert]
   );
-  useTauriEvent("data-changed", handleDataChanged);
+  useTauriEvent("data-changed", handleDataChanged, 2000);
 
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {

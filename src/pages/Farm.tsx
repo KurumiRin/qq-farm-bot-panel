@@ -253,7 +253,7 @@ export default function FarmPage() {
     },
     [fetchLands]
   );
-  useTauriEvent("data-changed", handleDataChanged);
+  useTauriEvent("data-changed", handleDataChanged, 2000);
 
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {

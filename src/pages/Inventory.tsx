@@ -136,7 +136,7 @@ export default function InventoryPage() {
     },
     [fetchBag]
   );
-  useTauriEvent("data-changed", handleDataChanged);
+  useTauriEvent("data-changed", handleDataChanged, 2000);
 
   const handleStatusChanged = useCallback(
     (payload: { connection: string }) => {
@@ -191,14 +191,19 @@ export default function InventoryPage() {
   const items = bag?.items ?? [];
   const filtered = tab === "all" ? items : items.filter((i) => i.category === tab);
   const hasFruits = items.some((i) => i.category === "fruit");
+  const fruitTotal = items
+    .filter((i) => i.category === "fruit" && i.unit_price > 0)
+    .reduce((sum, i) => sum + i.count * i.unit_price, 0);
+  const goldAmount = bag?.currencies.find(c => c.id === 1 || c.id === 1001)?.count ?? 0;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="仓库"
         tags={[
-          { label: "", value: bag ? bag.currencies.find(c => c.id === 1 || c.id === 1001)?.count.toLocaleString() ?? "0" : "-", icon: <Coins className="size-3" />, cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-          { label: "", value: bag ? bag.currencies.find(c => c.id === 1002)?.count.toLocaleString() ?? "0" : "-", icon: <Ticket className="size-3" />, cls: "bg-purple-500/10 text-purple-700 dark:text-purple-400" },
+          { label: "", value: bag ? goldAmount.toLocaleString() : "-", icon: <Coins className="size-3" />, cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+          { label: "可卖出", value: fruitTotal.toLocaleString(), icon: <Coins className="size-3" />, cls: "bg-green-500/10 text-green-700 dark:text-green-400", hidden: fruitTotal === 0 },
+          { label: "", value: bag ? (bag.currencies.find(c => c.id === 1002)?.count.toLocaleString() ?? "0") : "-", icon: <Ticket className="size-3" />, cls: "bg-purple-500/10 text-purple-700 dark:text-purple-400" },
         ]}
         actions={<>
           <Button
@@ -272,7 +277,17 @@ export default function InventoryPage() {
                     </span>
                   )}
                 </div>
-                {(isSeed || item.category === "fruit") && (
+                {item.category === "fruit" && (
+                  <button
+                    className="shrink-0 p-1 rounded text-on-surface-muted/40 hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+                    title={`卖出 ${item.name}`}
+                    onClick={() => setSellTarget({ id: item.id, count: item.count, name: item.name })}
+                    disabled={selling}
+                  >
+                    <Coins className="size-3.5" />
+                  </button>
+                )}
+                {isSeed && (
                   <button
                     className="shrink-0 p-1 rounded text-on-surface-muted/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
                     title={`卖出 ${item.name}`}
