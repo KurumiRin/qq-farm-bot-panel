@@ -69,6 +69,12 @@ export const getBag = () => invoke<unknown>("get_bag");
 
 export const sellAllFruits = () => invoke<string>("sell_all_fruits");
 
+export const sellItem = (itemId: number, count: number) =>
+  invoke<string>("sell_item", { itemId, count });
+
+export const useItem = (itemId: number, count: number) =>
+  invoke<string>("use_item", { itemId, count });
+
 // Tasks
 export const getTasks = () => invoke<unknown>("get_tasks");
 

@@ -66,6 +66,8 @@ pub fn run() {
             commands::visit_and_act_friend,
             commands::get_bag,
             commands::sell_all_fruits,
+            commands::sell_item,
+            commands::use_item,
             commands::get_tasks,
             commands::claim_all_tasks,
             commands::get_shop_info,

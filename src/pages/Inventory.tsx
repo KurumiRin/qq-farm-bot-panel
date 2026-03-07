@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw, Coins, Ticket } from "lucide-react";
+import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw, Coins, Ticket, Trash2, X, PackageOpen } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import { useIndicator } from "../hooks/useIndicator";
+import { useMinLoading } from "../hooks/useMinLoading";
 import * as api from "../api";
 
 interface BagItemView {
@@ -101,10 +102,11 @@ function TabBar({
 
 export default function InventoryPage() {
   const [bag, setBag] = useState<BagView | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useMinLoading();
   const [selling, setSelling] = useState(false);
   const [tab, setTab] = useState<string>("all");
   const [tabKey, setTabKey] = useState(0);
+  const [sellTarget, setSellTarget] = useState<{ id: number; count: number; name: string } | null>(null);
   const { toast } = useToast();
 
   const handleSetTab = useCallback((newTab: string) => {
@@ -156,6 +158,33 @@ export default function InventoryPage() {
       toast("error", msg);
     } finally {
       setSelling(false);
+    }
+  };
+
+  const confirmSellItem = async () => {
+    if (!sellTarget) return;
+    setSelling(true);
+    try {
+      const result = await api.sellItem(sellTarget.id, sellTarget.count);
+      toast("success", result);
+      setSellTarget(null);
+      await fetchBag();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast("error", msg);
+    } finally {
+      setSelling(false);
+    }
+  };
+
+  const handleUseItem = async (item: BagItemView) => {
+    try {
+      const result = await api.useItem(item.id, item.count);
+      toast("success", result);
+      await fetchBag();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast("error", msg);
     }
   };
 
@@ -243,12 +272,63 @@ export default function InventoryPage() {
                     </span>
                   )}
                 </div>
+                {(isSeed || item.category === "fruit") && (
+                  <button
+                    className="shrink-0 p-1 rounded text-on-surface-muted/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                    title={`卖出 ${item.name}`}
+                    onClick={() => setSellTarget({ id: item.id, count: item.count, name: item.name })}
+                    disabled={selling}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+                {item.category === "fertilizer" && (
+                  <button
+                    className="shrink-0 p-1 rounded text-on-surface-muted/40 hover:text-purple-500 hover:bg-purple-500/10 transition-colors"
+                    title={`使用 ${item.name}`}
+                    onClick={() => handleUseItem(item)}
+                  >
+                    <PackageOpen className="size-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
       )}
       </div>
+
+      {/* Sell confirmation dialog */}
+      {sellTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-[fade-in_150ms_ease-out] bg-black/40" onClick={() => setSellTarget(null)}>
+          <div className="w-72 rounded-xl bg-surface border border-border p-4 shadow-lg space-y-3 animate-[scale-in_150ms_ease-out]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">确认卖出</h3>
+              <button onClick={() => setSellTarget(null)} className="text-on-surface-muted hover:text-on-surface transition-colors">
+                <X className="size-4" />
+              </button>
+            </div>
+            <p className="text-xs text-on-surface-muted">
+              确定要卖出 <span className="font-medium text-on-surface">{sellTarget.name} ×{sellTarget.count}</span> 吗？
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSellTarget(null)}
+                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-bright transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmSellItem}
+                disabled={selling}
+                className="flex-1 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {selling ? "卖出中..." : "卖出"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -910,6 +910,69 @@ pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<String, Str
     }
 }
 
+/// Sell a specific item by id and count
+#[tauri::command]
+pub async fn sell_item(item_id: i64, count: i64, state: State<'_, TauriState>) -> Result<String, String> {
+    let engine = get_engine(&state).await?;
+
+    // Get bag to find the item's uid
+    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
+    let raw_items = bag.item_bag.map(|b| b.items).unwrap_or_default();
+    let item = raw_items.iter().find(|i| i.id == item_id && i.count > 0)
+        .ok_or_else(|| "物品不存在或数量为0".to_string())?;
+
+    let sell_count = count.min(item.count);
+    let mut sell_item = crate::proto::corepb::Item {
+        id: item_id,
+        count: sell_count,
+        ..Default::default()
+    };
+    if item.uid > 0 {
+        sell_item.uid = item.uid;
+    }
+
+    engine.warehouse().sell_items(vec![sell_item]).await
+        .map_err(|e| format!("出售失败: {}", e))?;
+
+    let name = crate::item_names::get_item_name(item_id).unwrap_or("物品");
+    let msg = format!("已出售 {} x{}", name, sell_count);
+    state.app_state.push_log("info", &msg);
+    Ok(msg)
+}
+
+/// Use an item (e.g. fertilizer)
+#[tauri::command]
+pub async fn use_item(item_id: i64, count: i64, state: State<'_, TauriState>) -> Result<String, String> {
+    let engine = get_engine(&state).await?;
+
+    let batch_item = crate::proto::corepb::Item {
+        id: item_id,
+        count,
+        ..Default::default()
+    };
+    engine.warehouse().batch_use(vec![batch_item]).await
+        .map_err(|e| format!("使用失败: {}", e))?;
+
+    let name = crate::item_names::get_item_name(item_id).unwrap_or("物品");
+
+    // Calculate fertilizer time description
+    let time_desc = match item_id {
+        80001 | 80011 => "1小时",
+        80002 | 80012 => "4小时",
+        80003 | 80013 => "8小时",
+        80004 | 80014 => "12小时",
+        _ => "",
+    };
+
+    let msg = if !time_desc.is_empty() {
+        format!("已使用 {} x{}，获得 {} 加速", name, count, time_desc)
+    } else {
+        format!("已使用 {} x{}", name, count)
+    };
+    state.app_state.push_log("info", &msg);
+    Ok(msg)
+}
+
 // ========== Task Commands ==========
 
 #[derive(Serialize)]
