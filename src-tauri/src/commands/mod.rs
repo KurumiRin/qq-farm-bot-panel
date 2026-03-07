@@ -780,6 +780,7 @@ pub struct BagItemView {
     pub count: i64,
     pub name: String,
     pub category: String, // "seed" | "fruit" | "fertilizer" | "currency" | "other"
+    pub unit_price: i64,  // fruit sell price per unit (0 for non-fruit)
 }
 
 #[derive(Serialize)]
@@ -839,7 +840,15 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
         if cat == "currency" {
             currencies.push(CurrencyView { id: item.id, count: item.count, name });
         } else {
-            items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into() });
+            let unit_price = if cat == "fruit" {
+                let seed_id = item.id - 20000;
+                crate::plant_econ::get_plant_econ(seed_id)
+                    .map(|p| p.fruit_price)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into(), unit_price });
         }
     }
 

@@ -12,6 +12,7 @@ interface BagItemView {
   count: number;
   name: string;
   category: string;
+  unit_price: number;
 }
 
 interface CurrencyView {
@@ -244,6 +245,11 @@ export default function InventoryPage() {
                   {item.name}
                 </span>
                 <span className="text-xs font-bold text-primary-600">x{item.count}</span>
+                {item.unit_price > 0 && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                    {item.unit_price}g · {(item.count * item.unit_price).toLocaleString()}g
+                  </span>
+                )}
               </div>
             );
           })}

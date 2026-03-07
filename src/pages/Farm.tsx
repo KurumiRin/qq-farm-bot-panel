@@ -93,11 +93,18 @@ function LandCard({ land }: { land: LandView }) {
     : soil?.card ?? "bg-surface border-border";
 
   return (
-    <div className={`rounded-lg border p-1.5 flex flex-col gap-0.5 ${cardBg}`}>
+    <div className={`relative rounded-lg border p-1.5 flex flex-col gap-0.5 h-full ${cardBg}`}>
+      {!land.unlocked ? (
+        <div className="flex flex-col items-center justify-center gap-1 flex-1">
+          <span className="absolute top-1.5 left-1.5 text-[10px] text-on-surface-muted/60 leading-none">#{land.id}</span>
+          <Lock className="size-4 text-on-surface-muted/20" />
+          <span className="text-[11px] font-medium text-on-surface-muted/40">未开垦</span>
+        </div>
+      ) : (<>
       {/* Row 1: id + soil label + status + needs */}
       <div className="flex items-center gap-1 text-[10px] leading-none min-h-3.5">
         <span className="text-on-surface-muted/60">#{land.id}</span>
-        {soil && land.unlocked && (
+        {soil && (
           <span className="text-on-surface-muted/80 font-medium">{soil.label}</span>
         )}
         {isMature && (
@@ -128,9 +135,7 @@ function LandCard({ land }: { land: LandView }) {
       {/* Row 2: image + info */}
       <div className="flex items-center gap-1.5 min-h-10">
         <div className="shrink-0 size-10 flex items-center justify-center">
-          {!land.unlocked ? (
-            <Lock className="size-4 text-on-surface-muted/20" />
-          ) : !isEmpty && land.seed_id > 0 ? (
+          {!isEmpty && land.seed_id > 0 ? (
             <img src={`/seeds/${land.seed_id}.png`} alt={land.seed_name} className="size-10 object-contain" />
           ) : (
             <Sprout className="size-4 text-on-surface-muted/20" />
@@ -138,7 +143,7 @@ function LandCard({ land }: { land: LandView }) {
         </div>
         <div className="flex-1 min-w-0 space-y-0.5">
           <span className="text-[11px] font-medium truncate block leading-tight">
-            {!land.unlocked ? "未开垦" : isEmpty ? "空地" : land.seed_name || "未知"}
+            {isEmpty ? "空地" : land.seed_name || "未知"}
           </span>
           {isGrowing && (
             <span className="text-[10px] text-on-surface-muted leading-tight block">{land.phase_name}</span>
@@ -186,6 +191,7 @@ function LandCard({ land }: { land: LandView }) {
           )}
         </div>
       )}
+      </>)}
     </div>
   );
 }
@@ -404,9 +410,9 @@ export default function FarmPage() {
           description="请先连接游戏服务器"
         />
       ) : (
-        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8" style={{ gridAutoRows: '1fr' }}>
           {lands.map((land, i) => (
-            <div key={land.id} className="animate-list-item" style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}>
+            <div key={land.id} className="animate-list-item h-full" style={{ animationDelay: `${Math.min(i * 20, 200)}ms` }}>
               <LandCard land={land} />
             </div>
           ))}
