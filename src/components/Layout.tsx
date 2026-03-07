@@ -201,7 +201,7 @@ export default function Layout() {
               <Sprout className="size-4.5 text-white" />
             </div>
             <div>
-              <p className="text-sm font-semibold leading-none">Farm Pilot</p>
+              <p className="text-sm font-semibold leading-none">Farm Bot Panel</p>
               <p className="mt-0.5 text-[11px] text-on-surface-muted leading-none">QQ 农场助手</p>
             </div>
           </div>
