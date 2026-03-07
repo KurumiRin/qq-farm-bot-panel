@@ -69,8 +69,12 @@ impl NetworkManager {
         self.connected.load(Ordering::Relaxed)
     }
 
-    /// Connect to the game server and start processing messages
-    pub async fn connect(self: &Arc<Self>, code: &str) -> AppResult<()> {
+    /// Establish WebSocket connection (without starting read loop)
+    pub(crate) async fn connect_ws(&self, code: &str) -> AppResult<futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >> {
         self.state.set_connection_status(ConnectionStatus::Connecting);
 
         let url = format!(
@@ -105,13 +109,29 @@ impl NetworkManager {
         self.state.set_connection_status(ConnectionStatus::Connected);
         log::info!("[WS] Connected to server");
 
-        // Start message processing loop
+        Ok(stream)
+    }
+
+    /// Connect to the game server and start processing messages
+    pub async fn connect(self: &Arc<Self>, code: &str) -> AppResult<()> {
+        let stream = self.connect_ws(code).await?;
+        self.spawn_read_loop(stream);
+        Ok(())
+    }
+
+    /// Spawn the message processing loop as a new task
+    pub(crate) fn spawn_read_loop(
+        self: &Arc<Self>,
+        stream: futures_util::stream::SplitStream<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+        >,
+    ) {
         let self_clone = Arc::clone(self);
         tokio::spawn(async move {
             self_clone.read_loop(stream).await;
         });
-
-        Ok(())
     }
 
     /// Send login request after connection
@@ -281,16 +301,19 @@ impl NetworkManager {
             >,
         >,
     ) {
+        let mut close_reason = "unknown";
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(tungstenite::Message::Binary(data)) => {
                     self.handle_message(&data);
                 }
                 Ok(tungstenite::Message::Close(_)) => {
+                    close_reason = "server closed";
                     log::info!("[WS] Connection closed by server");
                     break;
                 }
                 Err(e) => {
+                    close_reason = "read error";
                     log::error!("[WS] Read error: {}", e);
                     break;
                 }
@@ -299,7 +322,20 @@ impl NetworkManager {
         }
 
         self.connected.store(false, Ordering::Relaxed);
-        self.state.set_connection_status(ConnectionStatus::Disconnected);
+        self.pending.clear();
+        *self.ws_sink.lock().await = None;
+
+        // Auto-reconnect if we have a login code (not manually disconnected)
+        let code = self.state.login_code.read().clone();
+        if let Some(code) = code {
+            self.state.set_connection_status(ConnectionStatus::Reconnecting);
+            self.state.push_log("warn", format!("连接断开 ({})，准备自动重连...", close_reason));
+            // Free function to break opaque async type cycle
+            auto_reconnect(self, code).await;
+        } else {
+            self.state.set_connection_status(ConnectionStatus::Disconnected);
+            self.state.push_log("warn", format!("连接断开 ({})", close_reason));
+        }
     }
 
     /// Handle an incoming WebSocket message
@@ -377,6 +413,9 @@ impl NetworkManager {
                     notify.reason_message
                 };
                 log::warn!("Kicked out: {}", reason);
+                self.state.push_log("error", format!("被踢出: {}", reason));
+                // Clear login code so we don't auto-reconnect after kick
+                *self.state.login_code.write() = None;
                 let _ = self.event_tx.send(NetworkEvent::Kickout { reason });
             }
         } else if msg_type.contains("LandsNotify") {
@@ -459,4 +498,49 @@ impl NetworkManager {
             let _ = self.event_tx.send(NetworkEvent::TaskInfoNotify);
         }
     }
+}
+
+/// Auto reconnect with exponential backoff (free function to break async type cycle).
+async fn auto_reconnect(nm: Arc<NetworkManager>, code: String) {
+    let delays = [3u64, 5, 10, 15, 30, 60];
+    for (attempt, &delay) in delays.iter().enumerate() {
+        nm.state.push_log("info", format!("第 {} 次重连，{}秒后尝试...", attempt + 1, delay));
+        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+
+        // Abort if user manually disconnected during wait
+        if nm.state.login_code.read().is_none() {
+            nm.state.push_log("info", "已手动断开，取消重连");
+            nm.state.set_connection_status(ConnectionStatus::Disconnected);
+            return;
+        }
+
+        match nm.connect_ws(&code).await {
+            Ok(stream) => {
+                match nm.send_login().await {
+                    Ok(_) => {
+                        nm.start_heartbeat();
+                        nm.state.push_log("info", "重连成功");
+                        nm.spawn_read_loop(stream);
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!("Reconnect login failed: {}", e);
+                        nm.state.push_log("error", format!("重连登录失败: {}", e));
+                        nm.connected.store(false, std::sync::atomic::Ordering::Relaxed);
+                        if let Some(mut sink) = nm.ws_sink.lock().await.take() {
+                            let _ = sink.close().await;
+                        }
+                        nm.pending.clear();
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Reconnect attempt {} failed: {}", attempt + 1, e);
+                nm.state.push_log("error", format!("重连失败: {}", e));
+            }
+        }
+    }
+
+    nm.state.set_connection_status(ConnectionStatus::Disconnected);
+    nm.state.push_log("error", "多次重连失败，已放弃。请手动重新连接");
 }

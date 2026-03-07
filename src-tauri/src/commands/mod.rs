@@ -750,7 +750,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 
     let mut items: Vec<BagItemView> = raw_items
         .iter()
-        .filter(|item| item.count > 0)
+        .filter(|item| item.count > 0 && categorize_item(item.id).0 != "currency")
         .map(|item| {
             let (cat, _default_name) = categorize_item(item.id);
             BagItemView {
@@ -766,14 +766,14 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 
     // Sort: fruits first, then seeds, then others
     items.sort_by(|a, b| {
-        let order = |c: &str| match c { "fruit" => 0, "seed" => 1, "fertilizer" => 2, "currency" => 3, _ => 4 };
+        let order = |c: &str| match c { "fruit" => 0, "seed" => 1, "fertilizer" => 2, _ => 3 };
         order(&a.category).cmp(&order(&b.category)).then(b.count.cmp(&a.count))
     });
 
     let seed_count = items.iter().filter(|i| i.category == "seed").count();
     let fruit_count = items.iter().filter(|i| i.category == "fruit").count();
     let fertilizer_count = items.iter().filter(|i| i.category == "fertilizer").count();
-    let other_count = items.iter().filter(|i| i.category == "other" || i.category == "currency").count();
+    let other_count = items.iter().filter(|i| i.category == "other").count();
 
     Ok(BagView { items, seed_count, fruit_count, fertilizer_count, other_count })
 }
