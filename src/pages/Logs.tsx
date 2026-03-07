@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Trash2, ArrowDown } from "lucide-react";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import type { LogEntry } from "../types";
 import * as api from "../api";
@@ -50,44 +51,41 @@ export default function LogsPage() {
 
   const handleClear = () => {
     setLogs([]);
+    api.clearLogs();
   };
 
   return (
-    <div className="flex flex-col h-full gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">日志</h1>
-          <p className="text-sm text-on-surface-muted">
-            自动化运行记录 · {logs.length} 条
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!autoScroll && (
+    <div className="flex flex-col h-[calc(100vh-4.5rem)] gap-4">
+      <div className="shrink-0"><PageHeader
+          title="日志"
+          tags={[{ label: "运行记录", value: `${logs.length} 条` }]}
+          actions={<>
+            {!autoScroll && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<ArrowDown className="size-3.5" />}
+                onClick={() => {
+                  setAutoScroll(true);
+                  containerRef.current?.scrollTo({
+                    top: containerRef.current.scrollHeight,
+                    behavior: "smooth",
+                  });
+                }}
+              >
+                滚到底部
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"
-              icon={<ArrowDown className="size-3.5" />}
-              onClick={() => {
-                setAutoScroll(true);
-                containerRef.current?.scrollTo({
-                  top: containerRef.current.scrollHeight,
-                  behavior: "smooth",
-                });
-              }}
+              icon={<Trash2 className="size-3.5" />}
+              onClick={handleClear}
             >
-              滚到底部
+              清空
             </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Trash2 className="size-3.5" />}
-            onClick={handleClear}
-          >
-            清空
-          </Button>
-        </div>
-      </div>
+          </>}
+        /></div>
 
       <div
         ref={containerRef}
@@ -95,7 +93,7 @@ export default function LogsPage() {
         className="flex-1 min-h-0 overflow-y-auto rounded-card border border-border bg-surface font-mono text-xs"
       >
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-on-surface-muted text-sm">
+          <div className="flex items-center justify-center py-20 text-on-surface-muted text-sm">
             暂无日志，等待自动化运行...
           </div>
         ) : (

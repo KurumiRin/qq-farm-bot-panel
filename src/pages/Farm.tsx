@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Sprout, Scissors, Droplets, Bug, Leaf, Lock, Trash2, RefreshCw, Shovel, Coins, Star } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
@@ -286,16 +287,34 @@ export default function FarmPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">我的农场</h1>
-          <p className="text-sm text-on-surface-muted mt-0.5">
-            {summary
-              ? `${summary.unlocked} 块土地 · ${summary.growing} 生长中 · ${summary.mature} 可收获${totalGold ? ` · 预计 ${formatNum(totalGold)} 金 ${formatNum(totalExp)} 经验` : ""}`
-              : "加载中..."}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
+      <PageHeader
+        title="我的农场"
+        tags={[
+          ...(() => {
+            const soilCounts: Record<number, number> = {};
+            for (const l of lands) {
+              if (l.unlocked) soilCounts[l.level] = (soilCounts[l.level] ?? 0) + 1;
+            }
+            const SOIL_TAG: Record<number, { label: string; cls: string }> = {
+              1: { label: "黄土", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+              2: { label: "红土", cls: "bg-red-500/10 text-red-700 dark:text-red-400" },
+              3: { label: "黑土", cls: "bg-stone-500/10 text-stone-700 dark:text-stone-300" },
+              4: { label: "金土", cls: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" },
+            };
+            return Object.entries(soilCounts)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([lvl, count]) => {
+                const info = SOIL_TAG[Number(lvl)];
+                return info ? { label: info.label, value: count, cls: info.cls } : null;
+              })
+              .filter(Boolean) as { label: string; value: number; cls: string }[];
+          })(),
+          { label: "生长中", value: summary?.growing ?? "-", cls: "bg-green-500/10 text-green-700 dark:text-green-400" },
+          { label: "可收获", value: summary?.mature ?? 0, cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+          { label: "", value: formatNum(totalGold), icon: <Coins className="size-3" />, cls: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400", hidden: totalGold === 0 },
+          { label: "", value: formatNum(totalExp), icon: <Star className="size-3" />, cls: "bg-blue-500/10 text-blue-700 dark:text-blue-400", hidden: totalExp <= 0 },
+        ]}
+        actions={<>
           <Button
             size="sm"
             variant="ghost"
@@ -376,8 +395,8 @@ export default function FarmPage() {
               种植 ({emptyIds.length})
             </Button>
           )}
-        </div>
-      </div>
+        </>}
+      />
 
       {lands.length === 0 && !loading ? (
         <EmptyState

@@ -169,7 +169,7 @@ export default function Layout() {
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <div className={DRAG_CLASS} onMouseDown={startDrag} />
 
-        <main className="flex-1 overflow-y-auto px-6 pt-12 pb-6">
+        <main className="flex-1 overflow-y-auto px-6 pb-6">
           <div key={location.pathname} className="animate-page-enter">
             <Outlet />
           </div>

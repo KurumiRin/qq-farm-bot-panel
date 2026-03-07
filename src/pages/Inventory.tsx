@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react
 import { Package, ShoppingCart, Sprout, Apple, FlaskConical, RefreshCw } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
@@ -26,6 +27,8 @@ interface BagView {
   fruit_count: number;
   fertilizer_count: number;
   other_count: number;
+  normal_fert_secs: number;
+  organic_fert_secs: number;
 }
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: typeof Package }> = {
@@ -173,16 +176,13 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">仓库</h1>
-          <p className="text-sm text-on-surface-muted mt-0.5">
-            {bag
-              ? `${items.length} 种物品 · ${bag.fruit_count} 果实 · ${bag.seed_count} 种子`
-              : "加载中..."}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
+      <PageHeader
+        title="仓库"
+        tags={[
+          { label: "金币", value: bag ? bag.currencies.find(c => c.id === 1 || c.id === 1001)?.count.toLocaleString() ?? "0" : "-", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+          { label: "点券", value: bag ? bag.currencies.find(c => c.id === 1002)?.count.toLocaleString() ?? "0" : "-", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+        ]}
+        actions={<>
           <Button
             size="sm"
             variant="ghost"
@@ -203,21 +203,8 @@ export default function InventoryPage() {
               卖出果实
             </Button>
           )}
-        </div>
-      </div>
-
-      {bag && bag.currencies.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {bag.currencies.map((c) => (
-            <span
-              key={c.id}
-              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
-            >
-              {c.name} <span className="font-semibold">{c.count.toLocaleString()}</span>
-            </span>
-          ))}
-        </div>
-      )}
+        </>}
+      />
 
       {/* Tabs */}
       <TabBar tabs={TABS} tab={tab} setTab={handleSetTab} items={items} bag={bag} />
@@ -231,14 +218,14 @@ export default function InventoryPage() {
         />
       ) : (
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-          {filtered.map((item) => {
+          {filtered.map((item, idx) => {
             const catInfo = CATEGORY_LABELS[item.category] ?? CATEGORY_LABELS.other;
             const isSeed = item.category === "seed";
             const seedId = isSeed ? item.id : item.category === "fruit" ? item.id - 20000 : 0;
 
             return (
               <div
-                key={item.id}
+                key={`${item.id}-${idx}`}
                 className="rounded-lg border border-border bg-surface p-2 flex flex-col items-center gap-1"
               >
                 <div className="size-10 flex items-center justify-center">

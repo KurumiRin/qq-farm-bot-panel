@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import {
   Sprout,
   Coins,
@@ -10,9 +11,13 @@ import {
   Package,
   ListChecks,
   Mail,
+  FlaskConical,
 } from "lucide-react";
 import { Card } from "../components/Card";
+import { PageHeader } from "../components/PageHeader";
 import { useStatus } from "../hooks/useStatus";
+import { useTauriEvent } from "../hooks/useTauriEvent";
+import * as api from "../api";
 
 interface StatItemProps {
   icon: React.ReactNode;
@@ -34,6 +39,20 @@ function StatItem({ icon, label, value }: StatItemProps) {
   );
 }
 
+function formatDuration(secs: number): string {
+  if (secs <= 0) return "0";
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0 && m > 0) return `${h}小时${m}分`;
+  if (h > 0) return `${h}小时`;
+  return `${m}分钟`;
+}
+
+interface FertInfo {
+  normal_fert_secs: number;
+  organic_fert_secs: number;
+}
+
 const infoItems = [
   { key: "gold", label: "金币", color: "bg-yellow-50 text-yellow-600", icon: Coins, format: true },
   { key: "level", label: "等级", color: "bg-blue-50 text-blue-600", icon: TrendingUp, format: false },
@@ -43,6 +62,32 @@ const infoItems = [
 
 export default function DashboardPage() {
   const { status } = useStatus();
+  const [fert, setFert] = useState<FertInfo | null>(null);
+
+  const fetchFert = useCallback(async () => {
+    try {
+      const bag = (await api.getBag()) as FertInfo;
+      setFert({ normal_fert_secs: bag.normal_fert_secs, organic_fert_secs: bag.organic_fert_secs });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFert();
+  }, [fetchFert]);
+
+  const handleDataChanged = useCallback(
+    (scope: string) => { if (scope === "inventory") fetchFert(); },
+    [fetchFert]
+  );
+  useTauriEvent("data-changed", handleDataChanged);
+
+  const handleStatusChanged = useCallback(
+    (payload: { connection: string }) => { if (payload.connection === "LoggedIn") fetchFert(); },
+    [fetchFert]
+  );
+  useTauriEvent("status-changed", handleStatusChanged);
 
   if (!status) {
     return (
@@ -56,13 +101,11 @@ export default function DashboardPage() {
   const isOnline = connection === "LoggedIn";
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">仪表盘</h1>
-        <p className="text-sm text-on-surface-muted">
-          {isOnline ? `欢迎回来，${user.name}` : "未连接"}
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="仪表盘"
+        tags={[{ label: isOnline ? `欢迎回来，${user.name}` : "未连接" }]}
+      />
 
       {/* Info cards - 自适应宽度 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -85,6 +128,34 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* Fertilizer */}
+      {fert && (fert.normal_fert_secs > 0 || fert.organic_fert_secs > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="p-3!">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-lg p-1.5 shrink-0 bg-green-50 text-green-600">
+                <FlaskConical className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] text-on-surface-muted">普通化肥</p>
+                <p className="text-sm font-bold truncate">{formatDuration(fert.normal_fert_secs)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-3!">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-lg p-1.5 shrink-0 bg-emerald-50 text-emerald-600">
+                <FlaskConical className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] text-on-surface-muted">有机化肥</p>
+                <p className="text-sm font-bold truncate">{formatDuration(fert.organic_fert_secs)}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Stats */}
       <Card title="本次统计">

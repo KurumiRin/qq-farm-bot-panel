@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Users, Scissors, Droplets, Leaf, Bug, RefreshCw, Zap } from "lucide-react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
@@ -81,30 +82,25 @@ export default function FriendsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">好友</h1>
-          <p className="text-sm text-on-surface-muted mt-0.5">
-            {data
-              ? `${friends.length} 位好友 · ${hasAction.length} 位有可操作`
-              : "加载中..."}
-            {data && data.application_count > 0 && (
-              <span className="ml-1 text-primary-500">
-                · {data.application_count} 待处理申请
-              </span>
-            )}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
-          onClick={fetchFriends}
-          disabled={loading || busy !== null}
-        >
-          刷新
-        </Button>
-      </div>
+      <PageHeader
+        title="好友"
+        tags={data ? [
+          { label: "好友", value: friends.length },
+          { label: "可操作", value: hasAction.length, cls: "bg-green-500/10 text-green-700 dark:text-green-400", hidden: hasAction.length === 0 },
+          { label: "待处理申请", value: data.application_count, cls: "bg-primary-500/10 text-primary-600 dark:text-primary-400", hidden: data.application_count === 0 },
+        ] : [{ label: "加载中..." }]}
+        actions={
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />}
+            onClick={fetchFriends}
+            disabled={loading || busy !== null}
+          >
+            刷新
+          </Button>
+        }
+      />
 
       {friends.length === 0 && !loading ? (
         <EmptyState

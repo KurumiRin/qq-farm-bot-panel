@@ -3,6 +3,7 @@ import { ListTodo, Gift, Star, Zap, Check, Lock, ChevronDown, ChevronUp } from "
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { useTauriEvent } from "../hooks/useTauriEvent";
 import * as api from "../api";
 
@@ -65,48 +66,21 @@ function TaskCard({ task }: { task: TaskView }) {
   const claimable = completed && !task.is_claimed && task.is_unlocked;
   const claimed = task.is_claimed;
   const locked = !task.is_unlocked;
+  const pct = Math.round((task.progress / Math.max(1, task.total_progress)) * 100);
 
   return (
-    <div className="flex items-center gap-3 py-2">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium truncate">{task.desc || `任务 #${task.id}`}</p>
-          {task.share_multiple > 1 && (
-            <span className="rounded px-1 py-0.5 text-[10px] font-semibold bg-purple-500/15 text-purple-600 dark:text-purple-400">
-              {task.share_multiple}x
-            </span>
-          )}
-        </div>
-        {task.total_progress > 0 && (
-          <div className="mt-1.5">
-            <div className="flex items-center justify-between text-[11px] mb-0.5">
-              <span className="text-on-surface-muted">
-                {task.progress}/{task.total_progress}
-              </span>
-              <RewardBadges rewards={task.rewards} />
-            </div>
-            <div className="h-1 rounded-full bg-surface-bright overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  claimed
-                    ? "bg-gray-400"
-                    : claimable
-                      ? "bg-green-500"
-                      : "bg-primary-500"
-                }`}
-                style={{
-                  width: `${Math.min(100, (task.progress / task.total_progress) * 100)}%`,
-                }}
-              />
-            </div>
-          </div>
+    <div className="py-2">
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium truncate flex-1">{task.desc || `任务 #${task.id}`}</p>
+        {task.share_multiple > 1 && (
+          <span className="rounded px-1 py-0.5 text-[10px] font-semibold bg-purple-500/15 text-purple-600 dark:text-purple-400">
+            {task.share_multiple}x
+          </span>
         )}
-      </div>
-      <div className="shrink-0">
         {locked ? (
           <Lock className="size-3.5 text-on-surface-muted/40" />
         ) : claimed ? (
-          <span className="rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+          <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-400">
             <Check className="size-3 inline -mt-0.5" /> 已领
           </span>
         ) : claimable ? (
@@ -114,11 +88,31 @@ function TaskCard({ task }: { task: TaskView }) {
             可领取
           </span>
         ) : (
-          <span className="text-[10px] text-on-surface-muted">
-            {Math.round((task.progress / Math.max(1, task.total_progress)) * 100)}%
-          </span>
+          <span className="text-[10px] text-on-surface-muted">{pct}%</span>
         )}
       </div>
+      {task.total_progress > 0 && (
+        <div className="mt-1.5">
+          <div className="flex items-center justify-between text-[11px] mb-0.5">
+            <span className="text-on-surface-muted">
+              {task.progress}/{task.total_progress}
+            </span>
+            <RewardBadges rewards={task.rewards} />
+          </div>
+          <div className="h-1 rounded-full bg-surface-bright overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                completed
+                  ? "bg-green-500"
+                  : "bg-blue-500"
+              }`}
+              style={{
+                width: `${Math.min(100, pct)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -310,16 +304,13 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">任务</h1>
-          <p className="text-sm text-on-surface-muted">
-            {data
-              ? `${allTasks.length} 个任务${totalClaimable > 0 ? ` · ${totalClaimable} 个可领取` : ""}`
-              : "加载中..."}
-          </p>
-        </div>
-        {totalClaimable > 0 && (
+      <PageHeader
+        title="任务"
+        tags={data ? [
+          { label: "任务", value: allTasks.length },
+          { label: "可领取", value: totalClaimable, cls: "bg-green-500/10 text-green-700 dark:text-green-400", hidden: totalClaimable === 0 },
+        ] : [{ label: "加载中..." }]}
+        actions={totalClaimable > 0 ? (
           <Button
             size="sm"
             icon={<Gift className="size-3.5" />}
@@ -328,8 +319,8 @@ export default function TasksPage() {
           >
             全部领取 ({totalClaimable})
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {isEmpty && !loading ? (
         <EmptyState
