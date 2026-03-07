@@ -23,10 +23,10 @@ interface ToggleRowProps {
 function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
-      <div className="min-w-0">
-        <p className="text-[13px] font-medium leading-tight">{label}</p>
+      <div className="flex items-baseline gap-1.5 min-w-0">
+        <p className="text-[13px] font-medium leading-tight shrink-0">{label}</p>
         {description && (
-          <p className="text-xs text-on-surface-muted leading-tight mt-0.5">
+          <p className="text-xs text-on-surface-muted leading-tight truncate">
             {description}
           </p>
         )}
@@ -282,9 +282,6 @@ export default function SettingsPage() {
       <div className="space-y-3">
         {/* ===== 巡查节奏 ===== */}
         <Card title="巡查节奏" collapsible>
-          <p className="text-xs text-on-surface-muted mb-3">
-            每次巡查完成后随机等待最小~最大秒数，避免固定间隔被检测
-          </p>
           <div className="space-y-4">
             <div>
               <p className="text-[13px] font-medium mb-2">农场巡查</p>

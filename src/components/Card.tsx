@@ -6,6 +6,7 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   title?: string;
+  subtitle?: string;
   action?: ReactNode;
   /** Enable collapsible mode */
   collapsible?: boolean;
@@ -17,6 +18,7 @@ export function Card({
   children,
   className,
   title,
+  subtitle,
   action,
   collapsible,
   defaultCollapsed = false,
@@ -48,6 +50,7 @@ export function Card({
               />
             )}
             {title && <h3 className="text-sm font-semibold">{title}</h3>}
+            {subtitle && <p className="text-xs text-on-surface-muted">{subtitle}</p>}
           </div>
           {action}
         </div>
