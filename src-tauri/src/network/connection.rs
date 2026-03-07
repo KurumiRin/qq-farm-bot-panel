@@ -298,6 +298,10 @@ impl NetworkManager {
         // Cancel all pending requests (dropping senders closes channels)
         self.pending.clear();
 
+        // Reset sequence numbers for fresh session
+        self.client_seq.store(1, Ordering::Relaxed);
+        self.server_seq.store(0, Ordering::Relaxed);
+
         // Recreate event channel so the next AutomationEngine can take the receiver
         let (new_tx, new_rx) = mpsc::unbounded_channel();
         *self.event_tx.lock() = new_tx;
