@@ -69,22 +69,25 @@ impl WarehouseService {
     }
 
     /// Auto-sell all fruits in bag
-    pub async fn auto_sell_fruits(&self) -> AppResult<()> {
+    /// Returns total number of fruit items sold
+    pub async fn auto_sell_fruits(&self) -> AppResult<i64> {
         let bag = self.get_bag().await?;
         let items = match bag.item_bag {
             Some(bag) => bag.items,
-            None => return Ok(()),
+            None => return Ok(0),
         };
 
-        // Fruit IDs: 40000+ range (type 6)
+        // Fruit IDs: 40000-49999 range
         let fruits: Vec<corepb::Item> = items
             .into_iter()
-            .filter(|item| item.id >= 40000 && item.count > 0)
+            .filter(|item| item.id >= 40000 && item.id < 50000 && item.count > 0)
             .collect();
 
         if fruits.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
+
+        let total_count: i64 = fruits.iter().map(|i| i.count).sum();
 
         // Sell in batches of 15
         for chunk in fruits.chunks(15) {
@@ -97,11 +100,29 @@ impl WarehouseService {
                 })
                 .collect();
 
-            log::info!("Selling {} items", batch.len());
-            let _ = self.sell_items(batch).await;
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            let batch_len = batch.len();
+            match self.sell_items(batch).await {
+                Ok(_) => log::info!("Sold batch of {} fruit types", batch_len),
+                Err(e) => {
+                    log::warn!("Batch sell failed, trying one by one: {}", e);
+                    // Fallback: sell one by one, skip failures
+                    for item in chunk {
+                        let single = vec![corepb::Item {
+                            id: item.id,
+                            count: item.count,
+                            ..Default::default()
+                        }];
+                        if let Err(e) = self.sell_items(single).await {
+                            log::warn!("Skip unsellable item id={}: {}", item.id, e);
+                        }
+                    }
+                }
+            }
+            if fruits.len() > 15 {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            }
         }
 
-        Ok(())
+        Ok(total_count)
     }
 }

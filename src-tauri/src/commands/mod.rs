@@ -826,20 +826,17 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 pub async fn sell_all_fruits(state: State<'_, TauriState>) -> Result<String, String> {
     let engine = get_engine(&state).await?;
 
-    let bag = engine.warehouse().get_bag().await.map_err(|e| e.to_string())?;
-    let raw_items = bag.item_bag.map(|b| b.items).unwrap_or_default();
-    let fruit_count: i64 = raw_items.iter()
-        .filter(|i| i.id >= 40000 && i.id < 50000 && i.count > 0)
-        .map(|i| i.count)
-        .sum();
-
-    engine
+    let sold = engine
         .warehouse()
         .auto_sell_fruits()
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(format!("已出售 {} 个果实", fruit_count))
+    if sold == 0 {
+        Ok("没有果实可出售".into())
+    } else {
+        Ok(format!("已出售 {} 个果实", sold))
+    }
 }
 
 // ========== Task Commands ==========
