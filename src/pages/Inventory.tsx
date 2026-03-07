@@ -13,8 +13,15 @@ interface BagItemView {
   category: string;
 }
 
+interface CurrencyView {
+  id: number;
+  count: number;
+  name: string;
+}
+
 interface BagView {
   items: BagItemView[];
+  currencies: CurrencyView[];
   seed_count: number;
   fruit_count: number;
   fertilizer_count: number;
@@ -25,7 +32,6 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: type
   fruit: { label: "果实", color: "text-red-500", icon: Apple },
   seed: { label: "种子", color: "text-green-500", icon: Sprout },
   fertilizer: { label: "化肥", color: "text-purple-500", icon: FlaskConical },
-  currency: { label: "资源", color: "text-amber-500", icon: Package },
   other: { label: "其他", color: "text-on-surface-muted", icon: Package },
 };
 
@@ -175,6 +181,18 @@ export default function InventoryPage() {
               ? `${items.length} 种物品 · ${bag.fruit_count} 果实 · ${bag.seed_count} 种子`
               : "加载中..."}
           </p>
+          {bag && bag.currencies.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {bag.currencies.map((c) => (
+                <span
+                  key={c.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                >
+                  {c.name} <span className="font-semibold">{c.count.toLocaleString()}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <Button

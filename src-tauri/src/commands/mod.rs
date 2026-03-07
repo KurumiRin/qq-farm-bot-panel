@@ -713,25 +713,29 @@ pub struct BagItemView {
 }
 
 #[derive(Serialize)]
+pub struct CurrencyView {
+    pub id: i64,
+    pub count: i64,
+    pub name: String,
+}
+
+#[derive(Serialize)]
 pub struct BagView {
     pub items: Vec<BagItemView>,
+    pub currencies: Vec<CurrencyView>,
     pub seed_count: usize,
     pub fruit_count: usize,
     pub fertilizer_count: usize,
     pub other_count: usize,
 }
 
-fn categorize_item(id: i64) -> (&'static str, &'static str) {
+fn categorize_item(id: i64) -> &'static str {
     match id {
-        1 | 1001 => ("currency", "金币"),
-        1004 => ("currency", "钻石"),
-        1101 => ("currency", "经验"),
-        1011 => ("currency", "普通化肥容器"),
-        1012 => ("currency", "有机化肥容器"),
-        20000..=29999 => ("seed", "种子"),
-        40000..=49999 => ("fruit", "果实"),
-        80001..=80099 => ("fertilizer", "化肥"),
-        _ => ("other", "其他"),
+        1 | 1001..=1999 => "currency",
+        20000..=29999 => "seed",
+        40000..=49999 => "fruit",
+        80001..=80099 => "fertilizer",
+        _ => "other",
     }
 }
 
@@ -748,23 +752,21 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
 
     let raw_items = reply.item_bag.map(|b| b.items).unwrap_or_default();
 
-    let mut items: Vec<BagItemView> = raw_items
-        .iter()
-        .filter(|item| item.count > 0 && categorize_item(item.id).0 != "currency")
-        .map(|item| {
-            let (cat, _default_name) = categorize_item(item.id);
-            BagItemView {
-                id: item.id,
-                count: item.count,
-                name: crate::item_names::get_item_name(item.id)
-                    .unwrap_or(_default_name)
-                    .to_string(),
-                category: cat.into(),
-            }
-        })
-        .collect();
+    let mut items = Vec::new();
+    let mut currencies = Vec::new();
 
-    // Sort: fruits first, then seeds, then others
+    for item in raw_items.iter().filter(|i| i.count > 0) {
+        let cat = categorize_item(item.id);
+        let name = crate::item_names::get_item_name(item.id)
+            .unwrap_or(cat)
+            .to_string();
+        if cat == "currency" {
+            currencies.push(CurrencyView { id: item.id, count: item.count, name });
+        } else {
+            items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into() });
+        }
+    }
+
     items.sort_by(|a, b| {
         let order = |c: &str| match c { "fruit" => 0, "seed" => 1, "fertilizer" => 2, _ => 3 };
         order(&a.category).cmp(&order(&b.category)).then(b.count.cmp(&a.count))
@@ -775,7 +777,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
     let fertilizer_count = items.iter().filter(|i| i.category == "fertilizer").count();
     let other_count = items.iter().filter(|i| i.category == "other").count();
 
-    Ok(BagView { items, seed_count, fruit_count, fertilizer_count, other_count })
+    Ok(BagView { items, currencies, seed_count, fruit_count, fertilizer_count, other_count })
 }
 
 /// Manually sell all fruits
