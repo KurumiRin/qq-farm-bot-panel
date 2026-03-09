@@ -790,8 +790,9 @@ pub struct BagItemView {
     pub id: i64,
     pub count: i64,
     pub name: String,
-    pub category: String, // "seed" | "fruit" | "fertilizer" | "currency" | "other"
-    pub unit_price: i64,  // fruit sell price per unit (0 for non-fruit)
+    pub category: String, // "mutant_fruit" | "seed" | "fruit" | "fertilizer" | "currency" | "other"
+    pub unit_price: i64,  // sell price per unit (0 if not sellable)
+    pub price_unit: String, // "金豆豆" | "点券" | "金"
 }
 
 #[derive(Serialize)]
@@ -805,6 +806,7 @@ pub struct CurrencyView {
 pub struct BagView {
     pub items: Vec<BagItemView>,
     pub currencies: Vec<CurrencyView>,
+    pub mutant_fruit_count: usize,
     pub seed_count: usize,
     pub fruit_count: usize,
     pub fertilizer_count: usize,
@@ -822,7 +824,17 @@ fn categorize_item(id: i64) -> &'static str {
         20000..=29999 => "seed",
         40000..=49999 => "fruit",
         80001..=80099 => "fertilizer",
+        // Mutant fruits (type 17): 1040000+ range, sell for 金豆豆
+        1040000..=1049999 => "mutant_fruit",
         _ => "other",
+    }
+}
+
+/// Get the price unit display string for an item
+fn price_unit_for(id: i64) -> &'static str {
+    match id {
+        1040000..=1049999 => "金豆豆",
+        _ => "金",
     }
 }
 
@@ -862,18 +874,22 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
             currencies.push(CurrencyView { id: item.id, count: item.count, name });
         } else {
             let unit_price = match cat {
-                "fruit" | "seed" => crate::item_prices::get_item_price(item.id),
+                "fruit" | "seed" | "mutant_fruit" => crate::item_prices::get_item_price(item.id),
                 _ => 0,
             };
-            items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into(), unit_price });
+            let price_unit = price_unit_for(item.id).to_string();
+            items.push(BagItemView { id: item.id, count: item.count, name, category: cat.into(), unit_price, price_unit });
         }
     }
 
     items.sort_by(|a, b| {
-        let order = |c: &str| match c { "fruit" => 0, "seed" => 1, "fertilizer" => 2, _ => 3 };
-        order(&a.category).cmp(&order(&b.category)).then(b.count.cmp(&a.count))
+        let order = |c: &str| match c { "mutant_fruit" => 0, "fruit" => 1, "seed" => 2, "fertilizer" => 3, _ => 4 };
+        order(&a.category).cmp(&order(&b.category))
+            .then(b.count.cmp(&a.count))
+            .then(a.id.cmp(&b.id))
     });
 
+    let mutant_fruit_count = items.iter().filter(|i| i.category == "mutant_fruit").count();
     let seed_count = items.iter().filter(|i| i.category == "seed").count();
     let fruit_count = items.iter().filter(|i| i.category == "fruit").count();
     let fertilizer_count = items.iter().filter(|i| i.category == "fertilizer").count();
@@ -894,7 +910,7 @@ pub async fn get_bag(state: State<'_, TauriState>) -> Result<BagView, String> {
         organic_fert_secs += hours * 3600 * item.count;
     }
 
-    Ok(BagView { items, currencies, seed_count, fruit_count, fertilizer_count, other_count, normal_fert_secs, organic_fert_secs })
+    Ok(BagView { items, currencies, mutant_fruit_count, seed_count, fruit_count, fertilizer_count, other_count, normal_fert_secs, organic_fert_secs })
 }
 
 /// Manually sell all fruits

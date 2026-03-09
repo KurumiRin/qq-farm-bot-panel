@@ -10,15 +10,17 @@ import type { BagItemView, BagView } from "../types";
 import * as api from "../api";
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: typeof Package }> = {
+  mutant_fruit: { label: "变异", color: "text-amber-500", icon: Apple },
   fruit: { label: "果实", color: "text-red-500", icon: Apple },
   seed: { label: "种子", color: "text-green-500", icon: Sprout },
   fertilizer: { label: "化肥", color: "text-purple-500", icon: FlaskConical },
   other: { label: "其他", color: "text-on-surface-muted", icon: Package },
 };
 
-const TABS = ["all", "fruit", "seed", "fertilizer", "other"] as const;
+const TABS = ["all", "mutant_fruit", "fruit", "seed", "fertilizer", "other"] as const;
 const TAB_LABELS: Record<string, string> = {
   all: "全部",
+  mutant_fruit: "变异",
   fruit: "果实",
   seed: "种子",
   fertilizer: "化肥",
@@ -185,7 +187,9 @@ export default function InventoryPage() {
           {filtered.map((item, idx) => {
             const catInfo = CATEGORY_LABELS[item.category] ?? CATEGORY_LABELS.other;
             const isSeed = item.category === "seed";
-            const seedId = isSeed ? item.id : item.category === "fruit" ? item.id - 20000 : 0;
+            const isMutant = item.category === "mutant_fruit";
+            // Map item ID to image filename: seed 2xxxx, fruit 4xxxx→2xxxx, mutant uses own ID
+            const seedId = isMutant ? item.id : isSeed ? item.id : item.category === "fruit" ? item.id - 20000 : 0;
 
             return (
               <div
@@ -213,12 +217,14 @@ export default function InventoryPage() {
                     <span className="text-[11px] font-bold text-primary-600 shrink-0">×{item.count}</span>
                   </div>
                   {!isSeed && item.unit_price > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                      <Coins className="size-2.5" />{(item.count * item.unit_price).toLocaleString()}
+                    <span className={`inline-flex items-center gap-0.5 text-[10px] ${
+                      item.price_unit === "金豆豆" ? "text-amber-500 dark:text-amber-300" : "text-amber-600 dark:text-amber-400"
+                    }`}>
+                      <Coins className="size-2.5" />{(item.count * item.unit_price).toLocaleString()}{item.price_unit !== "金" ? item.price_unit : ""}
                     </span>
                   )}
                 </div>
-                {item.category === "fruit" && (
+                {(item.category === "fruit" || isMutant) && (
                   <button
                     className="shrink-0 p-1 rounded text-on-surface-muted/40 hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
                     title={`卖出 ${item.name}`}

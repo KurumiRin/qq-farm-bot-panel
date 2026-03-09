@@ -126,6 +126,7 @@ export interface BagItemView {
   name: string;
   category: string;
   unit_price: number;
+  price_unit: string;
 }
 
 export interface CurrencyView {
@@ -137,6 +138,7 @@ export interface CurrencyView {
 export interface BagView {
   items: BagItemView[];
   currencies: CurrencyView[];
+  mutant_fruit_count: number;
   seed_count: number;
   fruit_count: number;
   fertilizer_count: number;
