@@ -1,9 +1,11 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
 use tokio::sync::watch;
 
+use crate::config::{item_ids, FertilizerStrategy};
 use crate::network::{NetworkManager, NetworkEvent};
 use crate::state::{self, AppState};
 
@@ -189,25 +191,96 @@ impl AutomationEngine {
         log::warn!("Auto-plant failed: no affordable seeds (gold={})", gold);
     }
 
-    /// Plant one land at a time with delay
+    /// Plant one land at a time with delay.
+    /// Tracks occupied slave lands from 2x2 crops to avoid planting on them.
     async fn plant_one_by_one(&self, seed_id: i64, land_ids: &[i64]) -> usize {
         let mut ok = 0;
+        let mut occupied: HashSet<i64> = HashSet::new();
+
         for &land_id in land_ids {
+            // Skip if this land was already occupied by a previous 2x2 plant
+            if occupied.contains(&land_id) {
+                continue;
+            }
+
             let items = vec![crate::proto::plantpb::PlantItem {
                 seed_id,
                 land_ids: vec![land_id],
                 auto_slave: false,
             }];
-            if let Err(e) = self.farm.plant(items).await {
-                log::warn!("Plant land#{} failed: {}", land_id, e);
-            } else {
-                ok += 1;
+            match self.farm.plant(items).await {
+                Ok(reply) => {
+                    ok += 1;
+                    // Check if this plant occupied slave lands (2x2 crop)
+                    for land in &reply.land {
+                        if land.id == land_id {
+                            for &slave_id in &land.slave_land_ids {
+                                if slave_id > 0 {
+                                    occupied.insert(slave_id);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Plant land#{} failed: {}", land_id, e);
+                }
             }
             if land_ids.len() > 1 {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         }
         ok
+    }
+
+    /// Apply fertilizer to multi-season crops after harvest
+    async fn fertilize_multi_season(&self, land_ids: &[i64]) {
+        let config = self.state.automation_config.read().clone();
+        let strategy = &config.fertilizer_strategy;
+        if *strategy == FertilizerStrategy::None {
+            return;
+        }
+
+        log::info!("多季补肥: {} 块地", land_ids.len());
+        self.state.push_log("info", format!("多季补肥: {} 块地", land_ids.len()));
+
+        if *strategy == FertilizerStrategy::Normal || *strategy == FertilizerStrategy::Both {
+            match self.farm.fertilize(land_ids.to_vec(), item_ids::NORMAL_FERTILIZER).await {
+                Ok(_) => log::info!("多季补肥: 普通化肥施肥完成"),
+                Err(e) => log::warn!("多季补肥: 普通化肥失败: {}", e),
+            }
+        }
+
+        if *strategy == FertilizerStrategy::Organic || *strategy == FertilizerStrategy::Both {
+            match self.farm.fertilize(land_ids.to_vec(), item_ids::ORGANIC_FERTILIZER).await {
+                Ok(_) => log::info!("多季补肥: 有机化肥施肥完成"),
+                Err(e) => log::warn!("多季补肥: 有机化肥失败: {}", e),
+            }
+        }
+    }
+
+    /// Handle farm check result: sell, plant, fertilize
+    async fn handle_farm_check_result(&self, result: super::farm::FarmCheckResult) {
+        let config = self.state.automation_config.read().clone();
+
+        // Sell fruits after harvest
+        if config.auto_sell {
+            if let Err(e) = self.warehouse.auto_sell_fruits().await {
+                log::warn!("Auto sell after farm check: {}", e);
+            }
+        }
+
+        // Plant empty lands
+        let total = result.dead_ids.len() + result.empty_ids.len();
+        if total > 0 {
+            self.state.push_log("info", format!("发现 {} 块空地，自动种植中...", total));
+            self.auto_plant_empty_lands(&result.dead_ids, &result.empty_ids).await;
+        }
+
+        // Multi-season fertilizer
+        if !result.growing_after_harvest.is_empty() {
+            self.fertilize_multi_season(&result.growing_after_harvest).await;
+        }
     }
 
     /// Start all automation loops
@@ -228,22 +301,9 @@ impl AutomationEngine {
                         if !engine.state.is_logged_in() { continue; }
                         engine.state.push_log("info", "开始巡田检查");
                         match engine.farm.auto_check_farm().await {
-                            Ok((dead_ids, empty_ids)) => {
+                            Ok(result) => {
                                 engine.state.push_log("info", "巡田检查完成");
-
-                                // Sell fruits after harvest (before planting to maximize gold)
-                                let config = engine.state.automation_config.read().clone();
-                                if config.auto_sell {
-                                    if let Err(e) = engine.warehouse.auto_sell_fruits().await {
-                                        log::warn!("Auto sell after farm check: {}", e);
-                                    }
-                                }
-
-                                let total = dead_ids.len() + empty_ids.len();
-                                if total > 0 {
-                                    engine.state.push_log("info", format!("发现 {} 块空地，自动种植中...", total));
-                                    engine.auto_plant_empty_lands(&dead_ids, &empty_ids).await;
-                                }
+                                engine.handle_farm_check_result(result).await;
                             }
                             Err(e) => {
                                 log::warn!("Farm check error: {}", e);
@@ -379,21 +439,13 @@ impl AutomationEngine {
                                     let count = lands.len();
                                     log::info!("[Push] LandsNotify: {} lands changed", count);
                                     engine.state.push_log("info", format!("收到农田变化推送 ({}块地)", count));
-                                    // Notify frontend immediately
                                     state::emit_data_changed("farm");
-                                    // Trigger immediate farm check with debounce
                                     let now = tokio::time::Instant::now();
                                     if now.duration_since(last_farm_check) >= debounce && engine.state.is_logged_in() {
                                         last_farm_check = now;
                                         match engine.farm.auto_check_farm().await {
-                                            Ok((dead_ids, empty_ids)) => {
-                                                let config = engine.state.automation_config.read().clone();
-                                                if config.auto_sell {
-                                                    let _ = engine.warehouse.auto_sell_fruits().await;
-                                                }
-                                                if !dead_ids.is_empty() || !empty_ids.is_empty() {
-                                                    engine.auto_plant_empty_lands(&dead_ids, &empty_ids).await;
-                                                }
+                                            Ok(result) => {
+                                                engine.handle_farm_check_result(result).await;
                                             }
                                             Err(e) => log::warn!("Push-triggered farm check failed: {}", e),
                                         }

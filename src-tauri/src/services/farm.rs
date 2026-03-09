@@ -9,6 +9,14 @@ use crate::network::NetworkManager;
 use crate::proto::plantpb;
 use crate::state::AppState;
 
+/// Result of auto farm check
+pub struct FarmCheckResult {
+    pub dead_ids: Vec<i64>,
+    pub empty_ids: Vec<i64>,
+    /// Lands still growing after harvest (multi-season crops needing re-fertilize)
+    pub growing_after_harvest: Vec<i64>,
+}
+
 pub struct FarmService {
     network: Arc<NetworkManager>,
     state: Arc<AppState>,
@@ -200,8 +208,7 @@ impl FarmService {
     // ========== Automation helpers ==========
 
     /// Check own farm and perform automated actions
-    /// Returns (dead_land_ids, empty_land_ids) that need planting
-    pub async fn auto_check_farm(&self) -> AppResult<(Vec<i64>, Vec<i64>)> {
+    pub async fn auto_check_farm(&self) -> AppResult<FarmCheckResult> {
         let config = self.state.automation_config.read().clone();
         let reply = self.get_all_lands().await?;
 
@@ -211,6 +218,7 @@ impl FarmService {
         let mut insect_ids = Vec::new();
         let mut dead_ids = Vec::new();
         let mut empty_ids = Vec::new();
+        let mut growing_after_harvest = Vec::new();
 
         let now = self.state.server_now_sec();
 
@@ -219,16 +227,13 @@ impl FarmService {
                 continue;
             }
 
+            // Skip slave lands (occupied by 2x2 master land)
+            if land.master_land_id > 0 && land.master_land_id != land.id {
+                continue;
+            }
+
             if let Some(plant) = &land.plant {
-                // Find the phase that is currently active based on server time
-                let current_phase = plant
-                    .phases
-                    .iter()
-                    .rev()
-                    .find(|p| p.begin_time > 0 && p.begin_time <= now)
-                    .or_else(|| plant.phases.first())
-                    .map(|p| PlantPhase::from_i32(p.phase))
-                    .unwrap_or(PlantPhase::Unknown);
+                let current_phase = get_current_phase(plant, now);
 
                 match current_phase {
                     PlantPhase::Mature => mature_ids.push(land.id),
@@ -250,36 +255,28 @@ impl FarmService {
             }
         }
 
-        // Harvest mature crops, then check which lands actually became empty
-        // (2-season crops go back to growing after first harvest)
+        // Harvest mature crops, then classify post-harvest land states
         if config.auto_harvest && !mature_ids.is_empty() {
             log::info!("Harvesting {} lands", mature_ids.len());
             match self.harvest(mature_ids.clone(), 0).await {
                 Ok(harvest_reply) => {
-                    // Check harvest reply to classify post-harvest land states
                     for land in &harvest_reply.land {
                         if let Some(plant) = &land.plant {
-                            let phase = plant
-                                .phases
-                                .iter()
-                                .rev()
-                                .find(|p| p.begin_time > 0 && p.begin_time <= now)
-                                .or_else(|| plant.phases.first())
-                                .map(|p| PlantPhase::from_i32(p.phase))
-                                .unwrap_or(PlantPhase::Unknown);
+                            let phase = get_current_phase(plant, now);
                             match phase {
                                 PlantPhase::Dead => dead_ids.push(land.id),
                                 PlantPhase::Mature | PlantPhase::Unknown => {
-                                    // Unknown after harvest = likely empty
                                     empty_ids.push(land.id);
                                 }
-                                _ => {} // Still growing (2-season crop)
+                                _ => {
+                                    // Still growing = multi-season crop
+                                    growing_after_harvest.push(land.id);
+                                }
                             }
                         } else {
                             empty_ids.push(land.id);
                         }
                     }
-                    // For lands not in harvest reply, assume empty
                     let replied: std::collections::HashSet<i64> =
                         harvest_reply.land.iter().map(|l| l.id).collect();
                     for id in &mature_ids {
@@ -313,9 +310,22 @@ impl FarmService {
         }
 
         if config.auto_plant {
-            Ok((dead_ids, empty_ids))
+            Ok(FarmCheckResult { dead_ids, empty_ids, growing_after_harvest })
         } else {
-            Ok((Vec::new(), Vec::new()))
+            Ok(FarmCheckResult { dead_ids: Vec::new(), empty_ids: Vec::new(), growing_after_harvest })
         }
     }
 }
+
+/// Get the current plant phase based on server time
+fn get_current_phase(plant: &plantpb::PlantInfo, now: i64) -> PlantPhase {
+    plant
+        .phases
+        .iter()
+        .rev()
+        .find(|p| p.begin_time > 0 && p.begin_time <= now)
+        .or_else(|| plant.phases.first())
+        .map(|p| PlantPhase::from_i32(p.phase))
+        .unwrap_or(PlantPhase::Unknown)
+}
+
