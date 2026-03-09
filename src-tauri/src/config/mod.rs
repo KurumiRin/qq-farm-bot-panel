@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const SERVER_URL: &str = "wss://gate-obt.nqf.qq.com/prod/ws";
-pub const CLIENT_VERSION: &str = "1.6.0.14_20251224";
+pub const CLIENT_VERSION: &str = "1.6.2.18_20260227";
 pub const PLATFORM: &str = "qq";
 pub const OS: &str = "iOS";
 pub const HEARTBEAT_INTERVAL_MS: u64 = 25_000;

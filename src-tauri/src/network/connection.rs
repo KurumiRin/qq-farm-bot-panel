@@ -13,6 +13,7 @@ use crate::proto::{gatepb, userpb, plantpb, friendpb};
 use crate::state::{AppState, ConnectionStatus};
 
 use super::codec::{self, ServiceRoute};
+use super::crypto::CryptoWasm;
 
 type WsSink = futures_util::stream::SplitSink<
     tokio_tungstenite::WebSocketStream<
@@ -46,11 +47,23 @@ pub struct NetworkManager {
     event_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<NetworkEvent>>>>,
     /// Incremented on disconnect to cancel in-flight auto-reconnect
     reconnect_generation: AtomicI64,
+    /// WASM crypto for encrypting outgoing message bodies
+    crypto: Option<CryptoWasm>,
 }
 
 impl NetworkManager {
     pub fn new(state: Arc<AppState>) -> Arc<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let crypto = match CryptoWasm::new() {
+            Ok(c) => {
+                log::info!("[Crypto] WASM encryption initialized");
+                Some(c)
+            }
+            Err(e) => {
+                log::warn!("[Crypto] WASM init failed, sending unencrypted: {}", e);
+                None
+            }
+        };
         Arc::new(Self {
             state,
             client_seq: AtomicI64::new(1),
@@ -61,6 +74,7 @@ impl NetworkManager {
             event_tx: parking_lot::Mutex::new(event_tx),
             event_rx: Arc::new(Mutex::new(Some(event_rx))),
             reconnect_generation: AtomicI64::new(0),
+            crypto,
         })
     }
 
@@ -76,6 +90,16 @@ impl NetworkManager {
 
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
+    }
+
+    /// Reject all pending requests with an explicit error instead of silently dropping.
+    fn reject_all_pending(&self, reason: &str) {
+        let keys: Vec<i64> = self.pending.iter().map(|e| *e.key()).collect();
+        for seq in keys {
+            if let Some((_, tx)) = self.pending.remove(&seq) {
+                let _ = tx.send(Err(AppError::Other(reason.into())));
+            }
+        }
     }
 
     /// Establish WebSocket connection (without starting read loop)
@@ -208,7 +232,20 @@ impl NetworkManager {
         let seq = self.client_seq.fetch_add(1, Ordering::Relaxed);
         let server_seq = self.server_seq.load(Ordering::Relaxed);
 
-        let frame = codec::encode_gate_message(route, body, seq, server_seq);
+        // Encrypt body before encoding into gate message
+        let encrypted_body = if let Some(crypto) = &self.crypto {
+            match crypto.encrypt_buffer(&body) {
+                Ok(enc) => enc,
+                Err(e) => {
+                    log::warn!("[Crypto] Encrypt failed, sending raw: {}", e);
+                    body
+                }
+            }
+        } else {
+            body
+        };
+
+        let frame = codec::encode_gate_message(route, encrypted_body, seq, server_seq);
 
         let (tx, rx) = oneshot::channel();
         self.pending.insert(seq, tx);
@@ -295,12 +332,8 @@ impl NetworkManager {
                             self_clone.state.push_log("warn", format!(
                                 "心跳连续 {} 次无响应，连接可能已断开，正在清理...", miss_count
                             ));
-                            // Clear all pending requests so they fail immediately
-                            // instead of waiting for timeout
-                            for entry in self_clone.pending.iter() {
-                                log::debug!("Clearing pending request seq={}", entry.key());
-                            }
-                            self_clone.pending.clear();
+                            // Reject all pending requests so they fail immediately
+                            self_clone.reject_all_pending("心跳超时，连接已断开");
                             // Force close the sink to break the read_loop,
                             // which will trigger auto-reconnect
                             self_clone.connected.store(false, Ordering::Relaxed);
@@ -325,8 +358,8 @@ impl NetworkManager {
             let _ = sink.close().await;
         }
 
-        // Cancel all pending requests (dropping senders closes channels)
-        self.pending.clear();
+        // Reject all pending requests with explicit error
+        self.reject_all_pending("连接已断开");
 
         // Reset sequence numbers for fresh session
         self.client_seq.store(1, Ordering::Relaxed);
@@ -382,7 +415,7 @@ impl NetworkManager {
         }
 
         self.connected.store(false, Ordering::Relaxed);
-        self.pending.clear();
+        self.reject_all_pending("连接已断开");
         *self.ws_sink.lock().await = None;
 
         // Auto-reconnect if we have a login code (not manually disconnected)
@@ -598,7 +631,7 @@ async fn auto_reconnect(nm: Arc<NetworkManager>, code: String, generation: i64) 
                         if let Some(mut sink) = nm.ws_sink.lock().await.take() {
                             let _ = sink.close().await;
                         }
-                        nm.pending.clear();
+                        nm.reject_all_pending("重连登录失败");
                     }
                 }
             }
